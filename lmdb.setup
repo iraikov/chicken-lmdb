@@ -1,0 +1,48 @@
+;; -*- Hen -*-
+
+(define (dynld-name fn)		
+  (make-pathname #f fn ##sys#load-dynamic-extension))	
+
+(define (lmdb-try-compile ldflags cppflags)
+  (and (try-compile 
+	(string-append "#include <stdlib.h>\n"
+		       "#include <stdio.h>\n"
+		       "#include <string.h>\n"
+	 	       "#include <lmdb.h>\n"
+		       "int main(int argc, char **argv) { mdb_env_create(NULL); return 0; }\n")
+	ldflags: ldflags
+	cflags: cppflags)
+       (cons ldflags cppflags)
+       ))
+
+(define-syntax lmdb-test 
+  (syntax-rules ()
+    ((_ (flags ...))
+     (condition-case 
+      (lmdb-try-compile flags ...)
+      (t ()    #f)))))
+
+
+(define ld+cpp-options
+  (or (lmdb-test ("-llmdb" ""))
+      (error "unable to figure out location of LMDB")))
+
+
+(compile -S -O2 -d0 -I. -s lmdb.scm -j lmdb
+         -L "\"" ,(car ld+cpp-options) "\"" 
+	 -C "\"" ,(cdr ld+cpp-options) "\"" )
+(compile -O2 -d0 -s lmdb.import.scm)
+
+
+(install-extension
+
+  ; Name of your extension:
+  'lmdb
+
+  ; Files to install for your extension:
+  `(,(dynld-name "lmdb") ,(dynld-name "lmdb.import") )
+    
+  ; Assoc list with properties for your extension:
+  `((version "v1.0")
+    ))
+

@@ -1,0 +1,27 @@
+;; -*- Hen -*-
+
+((egg "lmdb.egg") ; This should never change
+
+ ; List here all the files that should be bundled as part of your egg.  
+
+ (files "lmdb.setup" "lmdb.meta"  "lmdb.scm" "tests")
+
+ ; Your egg's license:
+
+ (license "BSD")
+
+ ; Pick one from the list of categories (see below) for your egg and
+ ; enter it here.
+
+ (category db)
+
+ ; A list of eggs lmdb depends on.
+
+ (needs rabbit)
+
+ (test-depends test)
+
+ (maintainer "Ivan Raikov")
+ (author "Lambda Native")
+
+ (synopsis "Bindings to the LMDB key value database"))
