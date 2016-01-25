@@ -62,7 +62,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
          lmdb-ref
          lmdb-close
          lmdb-count
-         lmdb-index
+         lmdb-keys
+         lmdb-values
+         lmdb-fold
+         lmdb-for-each
          hash-table->lmdb
          lmdb->hash-table
          )
@@ -331,16 +334,9 @@ END
   (lmdb-count (lmdb-session-handler s)))
 
 
-(define (hash-table->lmdb t mfile . key)
-  (lmdb-log 2 "table->lmdb ~A ~A ~A~%" t mfile key)
-  (lmdb-delete mfile)
-  (let ((s (apply lmdb-open (append (list mfile) key))))
-    (hash-table-for-each t (lambda (k v) (lmdb-set! s (string->blob (symbol->string k)) v)))
-    (lmdb-close s) #t))
 
-
-(define (lmdb-index s)
-  (lmdb-log 2 "lmdb-index ~A~%" s)
+(define (lmdb-keys s)
+  (lmdb-log 2 "lmdb-keys ~A~%" s)
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
     (lmdb-index-first m)
@@ -350,7 +346,76 @@ END
           (let* ((klen (lmdb-key-len m))
                  (k (make-blob klen)))
             (lmdb-key m k) 
-            (loop (append idx (list (decode k))))))))))
+            (loop (cons (decode k) idx))
+            ))
+        ))
+    ))
+
+
+(define (lmdb-values s)
+  (lmdb-log 2 "lmdb-values ~A~%" s)
+  (let* ((m (lmdb-session-handler s))
+         (decode (lmdb-session-decoder s)))
+    (lmdb-index-first m)
+    (let loop ((idx '()))
+      (let ((res (lmdb-index-next m)))
+        (if (not (= res 0)) idx
+          (let* ((vlen (lmdb-value-len m))
+                 (v (make-blob vlen)))
+            (lmdb-value m v) 
+            (loop (cons (decode v) idx))
+            ))
+        ))
+    ))
+
+
+(define (lmdb-fold f init s)
+  (lmdb-log 2 "lmdb-fold ~A~%" s)
+  (let* ((m (lmdb-session-handler s))
+         (decode (lmdb-session-decoder s)))
+    (lmdb-index-first m)
+    (let loop ((ax init))
+      (let ((res (lmdb-index-next m)))
+        (if (not (= res 0)) ax
+          (let* ((klen (lmdb-key-len m))
+                 (k (make-blob klen))
+                 (vlen (lmdb-value-len m))
+                 (v (make-blob vlen)))
+            (lmdb-key m k) 
+            (lmdb-value m v) 
+            (loop (f (decode k) (decode v) ax))
+            ))
+        ))
+    ))
+
+
+(define (lmdb-for-each f s)
+  (lmdb-log 2 "lmdb-for-each ~A~%" s)
+  (let* ((m (lmdb-session-handler s))
+         (decode (lmdb-session-decoder s)))
+    (lmdb-index-first m)
+    (let loop ()
+      (let ((res (lmdb-index-next m)))
+        (if (not (= res 0)) (begin)
+          (let* ((klen (lmdb-key-len m))
+                 (k (make-blob klen))
+                 (vlen (lmdb-value-len m))
+                 (v (make-blob vlen)))
+            (lmdb-key m k) 
+            (lmdb-value m v) 
+            (f (decode k) (decode v))
+            (loop)
+            ))
+        ))
+    ))
+
+
+(define (hash-table->lmdb t mfile . key)
+  (lmdb-log 2 "table->lmdb ~A ~A ~A~%" t mfile key)
+  (lmdb-delete mfile)
+  (let ((s (apply lmdb-open (append (list mfile) key))))
+    (hash-table-for-each t (lambda (k v) (lmdb-set! s (string->blob (symbol->string k)) v)))
+    (lmdb-close s) #t))
 
 
 (define (lmdb->hash-table mfile . key)

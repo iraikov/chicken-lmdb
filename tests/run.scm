@@ -67,3 +67,26 @@
                  ))
              ))
 
+(test-group "lmdb unencrypted key-value creation and fold"
+             (let* ((fname (make-pathname "." "unittest.mdb")))
+               (lmdb-delete fname)
+               (let* ((keys (list "k1" 'k2 '(k3)))
+                      (values (list 'one 2 "three"))
+                      (mm (lmdb-open fname)))
+                 (let loop ((ks keys) (vs values))
+                   (if (> (length ks) 0) 
+                       (begin
+                         (lmdb-set! mm (string->blob (->string (car ks))) (string->blob (->string (car vs))))
+                         (loop (cdr ks) (cdr vs)))))
+                 (lmdb-close mm)
+                 (let* ((mm (lmdb-open fname))
+                        (res (lmdb-fold (lambda (k v ax) (cons (cons k v) ax)) '() mm))
+                        )
+                   (lmdb-close mm)
+                   (lmdb-delete fname)
+                   (test res (map (lambda (k v) (cons (string->blob (->string k)) (string->blob (->string v)))) 
+                                  (list 'k2 "k1" '(k3))
+                                  (list 2 'one "three")))
+                   ))
+             ))
+

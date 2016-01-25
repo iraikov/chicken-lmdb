@@ -28,6 +28,15 @@ Returns number of key-value pairs in database.
 `(lmdb-keys db)`
 Returns a list of database keys.
 
+`(lmdb-values db)`
+Returns a list of database values.
+
+`(lmdb-fold f init db)`
+Fold over the keys and values in the database.
+
+`(lmdb-for-each f init db)`
+Iterate over the keys and values in the database.
+
 `(hash-table->lmdb t dbfile . enckey)`
 Saves SRFI-69 hash table to database.
 
