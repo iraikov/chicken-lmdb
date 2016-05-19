@@ -100,14 +100,14 @@ struct _mdb {
   MDB_cursor *cursor;
 };
 
-struct _mdb *_mdb_init(char *fname)
+struct _mdb *_mdb_init(char *fname, char *dbname)
 {
   int rc;
   struct _mdb *m = (struct _mdb *)malloc(sizeof(struct _mdb));
   rc = mdb_env_create(&m->env);
   rc = mdb_env_open(m->env, fname, 0, 0664);
   rc = mdb_txn_begin(m->env, NULL, 0, &m->txn);
-  rc = mdb_open(m->txn, NULL, 0, &m->dbi);
+  rc = mdb_open(m->txn, dbname, 0, &m->dbi);
   m->cursor=NULL;
   return m;
 }
@@ -203,9 +203,13 @@ int _mdb_count(struct _mdb *m)
 
 ;; ffi
 
-(define lmdb-init (foreign-safe-lambda* 
-                   nonnull-c-pointer ((c-string fname)) 
-                   "C_return (_mdb_init (fname));"))
+
+(define lmdb-init0 (foreign-safe-lambda* 
+                    nonnull-c-pointer ((nonnull-c-string fname) (c-string dbname) )
+                    "C_return (_mdb_init (fname,dbname));"))
+(define (lmdb-init fname #!key (dbname #f))
+  (lmdb-init0 fname dbname))
+
 (define lmdb-cleanup (foreign-safe-lambda* 
                    void ((nonnull-c-pointer m))
                    "_mdb_cleanup (m);"))
