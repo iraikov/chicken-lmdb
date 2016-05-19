@@ -291,12 +291,12 @@ END
      (delete-directory fname)))) 
 
 
-(define (lmdb-open fname . key)
+(define (lmdb-open fname #!key (key #f) (dbname #f))
   (lmdb-log 2 "lmdb-open ~A ~A~%" fname key)
-  (let ((ctx (if (null? key) #f (lmdb-makectx (car key)))))
+  (let ((ctx (and key (lmdb-makectx key))))
     (if (not (file-exists? fname)) (create-directory fname))
     (make-lmdb-session
-     (lmdb-init fname) 
+     (lmdb-init fname dbname: dbname)
      (if (not ctx) identity (lmdb-encoder ctx))
      (if (not ctx) identity (lmdb-decoder ctx)) 
      ctx)))

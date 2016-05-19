@@ -7,8 +7,8 @@ management library.
 
 ## Library procedures
 
-`(lmdb-open dbname [enckey])`
-Opens or creates LMDB database with optional encryption key.
+`(lmdb-open dbname [key: enckey] [dbname: dbname])`
+Opens or creates LMDB database with optional encryption key and database name.
 
 `(lmdb-delete dbname)`
 Deletes LMDB database.
