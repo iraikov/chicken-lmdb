@@ -92,6 +92,48 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define C_bytevector_length(x)      (C_header_size(x))
 
+static void chicken_Panic (C_char *) C_noret;
+static void chicken_Panic (C_char *msg)
+{
+  C_word *a = C_alloc (C_SIZEOF_STRING (strlen (msg)));
+  C_word scmmsg = C_string2 (&a, msg);
+  C_halt (scmmsg);
+  exit (5); /* should never get here */
+}
+
+static void chicken_ThrowException(C_word value) C_noret;
+static void chicken_ThrowException(C_word value)
+{
+  char *aborthook = C_text("\003sysabort");
+
+  C_word *a = C_alloc(C_SIZEOF_STRING(strlen(aborthook)));
+  C_word abort = C_intern2(&a, aborthook);
+
+  abort = C_block_item(abort, 0);
+  if (C_immediatep(abort))
+    Chicken_Panic(C_text("`##sys#abort' is not defined"));
+
+#if defined(C_BINARY_VERSION) && (C_BINARY_VERSION >= 8)
+  C_word rval[3] = { abort, C_SCHEME_UNDEFINED, value };
+  C_do_apply(3, rval);
+#else
+  C_save(value);
+  C_do_apply(1, abort, C_SCHEME_UNDEFINED);
+#endif
+}
+
+void chicken_lmdb_exception (int code, int msglen, const char *msg) 
+{
+  C_word *a;
+  C_word scmmsg;
+  C_word list;
+
+  a = C_alloc (C_SIZEOF_STRING (msglen) + C_SIZEOF_LIST(2));
+  scmmsg = C_string2 (&a, (char *) msg);
+  list = C_list(&a, 2, C_fix(code), scmmsg);
+  chicken_ThrowException(list);
+}
+
 struct _mdb {
   MDB_env *env;
   MDB_dbi dbi;
@@ -100,17 +142,36 @@ struct _mdb {
   MDB_cursor *cursor;
 };
 
-struct _mdb *_mdb_init(char *fname, char *dbname)
+struct _mdb *_mdb_init(char *fname, char *dbname, int maxdbs)
 {
   int rc;
   struct _mdb *m = (struct _mdb *)malloc(sizeof(struct _mdb));
-  rc = mdb_env_create(&m->env);
-  rc = mdb_env_open(m->env, fname, 0, 0664);
-  rc = mdb_txn_begin(m->env, NULL, 0, &m->txn);
-  rc = mdb_open(m->txn, dbname, 0, &m->dbi);
+  if ((rc = mdb_env_create(&m->env)) != 0) 
+  {
+     chicken_lmdb_exception (rc, 34, "_mdb_init: error in mdb_env_create");
+  }
+  if (maxdbs > 0) {
+     if ((rc = mdb_env_set_maxdbs(m->env, maxdbs)) != 0)
+     {
+        chicken_lmdb_exception (rc, 38, "_mdb_init: error in mdb_env_set_maxdbs");
+     }
+  }
+  if ((rc = mdb_env_open(m->env, fname, 0, 0664)) != 0)
+  {
+     chicken_lmdb_exception (rc, 33, "_mdb_init: error in mdb_env_open");
+  }
+  if ((rc = mdb_txn_begin(m->env, NULL, 0, &(m->txn))) != 0)
+  {
+     chicken_lmdb_exception (rc, 33, "_mdb_init: error in mdb_txn_begin");
+  }
+  if ((rc = mdb_open(m->txn, dbname, MDB_CREATE, &m->dbi)) != 0)
+  {
+     chicken_lmdb_exception (rc, 28, "_mdb_init: error in mdb_open");
+  }
   m->cursor=NULL;
   return m;
 }
+
 
 int _mdb_write(struct _mdb *m, unsigned char *k, int klen, unsigned char *v, int vlen)
 {
@@ -119,7 +180,10 @@ int _mdb_write(struct _mdb *m, unsigned char *k, int klen, unsigned char *v, int
   m->key.mv_data = k;
   m->value.mv_size = vlen;
   m->value.mv_data = v;
-  rc = mdb_put(m->txn, m->dbi, &m->key, &m->value, 0);
+  if ((rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0)) != 0)
+  {
+     chicken_lmdb_exception (rc, 28, "_mdb_write: error in mdb_put");
+  }
   if (!rc) { 
     rc = mdb_txn_commit(m->txn);
     rc = mdb_txn_begin(m->env, NULL, 0, &m->txn);
@@ -132,7 +196,10 @@ int _mdb_read(struct _mdb *m, unsigned char *k, int klen)
   int rc;
   m->key.mv_size = klen;
   m->key.mv_data = k;
-  rc = mdb_get(m->txn,m->dbi,&m->key, &m->value);
+  if ((rc = mdb_get(m->txn,m->dbi,&m->key, &m->value)) != 0)
+  {
+     chicken_lmdb_exception (rc, 27, "_mdb_read: error in mdb_get");
+  }
   return rc;
 }
 
@@ -205,10 +272,10 @@ int _mdb_count(struct _mdb *m)
 
 
 (define lmdb-init0 (foreign-safe-lambda* 
-                    nonnull-c-pointer ((nonnull-c-string fname) (c-string dbname) )
-                    "C_return (_mdb_init (fname,dbname));"))
-(define (lmdb-init fname #!key (dbname #f))
-  (lmdb-init0 fname dbname))
+                    nonnull-c-pointer ((nonnull-c-string fname) (c-string dbname) (int maxdbs))
+                    "C_return (_mdb_init (fname,dbname,maxdbs));"))
+(define (lmdb-init fname #!key (dbname #f) (maxdbs 0))
+  (lmdb-init0 fname dbname maxdbs))
 
 (define lmdb-cleanup (foreign-safe-lambda* 
                    void ((nonnull-c-pointer m))
@@ -291,12 +358,12 @@ END
      (delete-directory fname)))) 
 
 
-(define (lmdb-open fname #!key (key #f) (dbname #f))
+(define (lmdb-open fname #!key (key #f) (dbname #f) (maxdbs 0))
   (lmdb-log 2 "lmdb-open ~A ~A~%" fname key)
   (let ((ctx (and key (lmdb-makectx key))))
     (if (not (file-exists? fname)) (create-directory fname))
     (make-lmdb-session
-     (lmdb-init fname dbname: dbname)
+     (lmdb-init fname dbname: dbname maxdbs: maxdbs)
      (if (not ctx) identity (lmdb-encoder ctx))
      (if (not ctx) identity (lmdb-decoder ctx)) 
      ctx)))
@@ -311,7 +378,7 @@ END
          (lmdb-encode (lmdb-session-encoder s))
          (u8key (lmdb-encode key))
          (u8val (lmdb-encode val)))
-    (= 0 (lmdb-write lmdb-ptr u8key u8val))))
+    (lmdb-write lmdb-ptr u8key u8val)))
 
 
 (define (lmdb-ref s key)
