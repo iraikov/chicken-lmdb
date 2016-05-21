@@ -182,11 +182,8 @@ int _mdb_write(struct _mdb *m, unsigned char *k, int klen, unsigned char *v, int
   m->value.mv_data = v;
   if ((rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0)) != 0)
   {
+     rc = mdb_txn_commit(m->txn);
      chicken_lmdb_exception (rc, 28, "_mdb_write: error in mdb_put");
-  }
-  if (!rc) { 
-    rc = mdb_txn_commit(m->txn);
-    rc = mdb_txn_begin(m->env, NULL, 0, &m->txn);
   }
   return rc;
 }
@@ -207,14 +204,20 @@ int _mdb_index_first(struct _mdb *m)
 {
   int rc;
   if (m->cursor) { mdb_cursor_close(m->cursor); }
-  rc = mdb_cursor_open(m->txn, m->dbi, &m->cursor);
+  if ((rc = mdb_cursor_open(m->txn, m->dbi, &m->cursor)) != 0)
+  {
+     chicken_lmdb_exception (rc, 42, "_mdb_index_first: error in mdb_cursor_open");
+  }
   return rc;
 }
 
 int _mdb_index_next(struct _mdb *m)
 {
   int rc;
-  rc = mdb_cursor_get(m->cursor, &m->key, &m->value, MDB_NEXT);
+  if ((rc = mdb_cursor_get(m->cursor, &m->key, &m->value, MDB_NEXT)) != 0)
+  {
+     chicken_lmdb_exception (rc, 40, "_mdb_index_next: error in mdb_cursor_get");
+  }
   return rc;
 }
 
