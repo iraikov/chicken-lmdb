@@ -204,20 +204,21 @@ int _mdb_index_first(struct _mdb *m)
 {
   int rc;
   if (m->cursor) { mdb_cursor_close(m->cursor); }
-  if ((rc = mdb_cursor_open(m->txn, m->dbi, &m->cursor)) != 0)
+  if ((rc = mdb_cursor_open(m->txn, m->dbi, &(m->cursor))) != 0)
   {
      chicken_lmdb_exception (rc, 42, "_mdb_index_first: error in mdb_cursor_open");
-  }
+  } else 
+    if ((rc = mdb_cursor_get(m->cursor, &(m->key), &(m->value), MDB_FIRST)) != 0)
+    {
+     chicken_lmdb_exception (rc, 42, "_mdb_index_first: error in mdb_cursor_get");
+    }
   return rc;
 }
 
 int _mdb_index_next(struct _mdb *m)
 {
   int rc;
-  if ((rc = mdb_cursor_get(m->cursor, &m->key, &m->value, MDB_NEXT)) != 0)
-  {
-     chicken_lmdb_exception (rc, 40, "_mdb_index_next: error in mdb_cursor_get");
-  }
+  rc = mdb_cursor_get(m->cursor, &(m->key), &(m->value), MDB_NEXT);
   return rc;
 }
 
@@ -408,13 +409,23 @@ END
   (lmdb-count (lmdb-session-handler s)))
 
 
+(define (lmdb-get-key s)
+  (lmdb-log 2 "lmdb-get-key ~A~%" s)
+  (let* ((m (lmdb-session-handler s))
+         (decode (lmdb-session-decoder s)))
+    (let* ((klen (lmdb-key-len m))
+           (k (make-blob klen)))
+      (lmdb-key m k) 
+      (decode k)
+      ))
+  )
 
 (define (lmdb-keys s)
   (lmdb-log 2 "lmdb-keys ~A~%" s)
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
     (lmdb-index-first m)
-    (let loop ((idx '()))
+    (let loop ((idx (list (lmdb-get-key s))))
       (let ((res (lmdb-index-next m)))
         (if (not (= res 0)) idx
           (let* ((klen (lmdb-key-len m))
@@ -425,13 +436,24 @@ END
         ))
     ))
 
+(define (lmdb-get-value s)
+  (lmdb-log 2 "lmdb-value ~A~%" s)
+  (let* ((m (lmdb-session-handler s))
+         (decode (lmdb-session-decoder s)))
+    (let* ((vlen (lmdb-value-len m))
+           (v (make-blob vlen)))
+      (lmdb-value m v) 
+      (decode v)
+      ))
+  )
+
 
 (define (lmdb-values s)
   (lmdb-log 2 "lmdb-values ~A~%" s)
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
     (lmdb-index-first m)
-    (let loop ((idx '()))
+    (let loop ((idx (list (lmdb-get-value s))))
       (let ((res (lmdb-index-next m)))
         (if (not (= res 0)) idx
           (let* ((vlen (lmdb-value-len m))
@@ -448,7 +470,9 @@ END
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
     (lmdb-index-first m)
-    (let loop ((ax init))
+    (let loop ((ax (let ((k0 (lmdb-get-key s))
+                         (v0 (lmdb-get-value s)))
+                     (f k0 v0 init))))
       (let ((res (lmdb-index-next m)))
         (if (not (= res 0)) ax
           (let* ((klen (lmdb-key-len m))
@@ -468,6 +492,9 @@ END
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
     (lmdb-index-first m)
+    (let ((k0 (lmdb-get-key s))
+          (v0 (lmdb-get-value s)))
+      (f k0 v0))
     (let loop ()
       (let ((res (lmdb-index-next m)))
         (if (not (= res 0)) (begin)
@@ -502,6 +529,9 @@ END
       (if m 
           (begin
             (lmdb-index-first m) 
+            (let ((k0 (lmdb-key s))
+                  (v0 (lmdb-value s)))
+              (hash-table-set! t k0 v0))
             (let ((fnl (let loop ()
                          (let* ((res (lmdb-index-next m))
                                 (klen (if (= res 0) (lmdb-key-len m) #f))
