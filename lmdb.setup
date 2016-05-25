@@ -43,6 +43,6 @@
   `(,(dynld-name "lmdb") ,(dynld-name "lmdb.import") )
     
   ; Assoc list with properties for your extension:
-  `((version "1.2")
+  `((version "1.3")
     ))
 
