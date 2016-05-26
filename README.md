@@ -40,6 +40,6 @@ Iterate over the keys and values in the database.
 `(hash-table->lmdb t dbfile [enckey])`
 Saves SRFI-69 hash table to database.
 
-`(lmdb->table dbfile [enckey])`
+`(lmdb->hash-table dbfile [enckey])`
 Load database into SRFI-69 hash table.
 
