@@ -46,8 +46,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
          lmdb-debuglevel
          lmdb-makectx
          lmdb-destroyctx
+         make-lmdb
          lmdb-init
-         lmdb-cleanup
+         lmdb-open
+         lmdb-close
+         lmdb-begin
+         lmdb-end
          lmdb-write
          lmdb-read
          lmdb-key-len
@@ -58,11 +62,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
          lmdb-index-first
          lmdb-index-next
          lmdb-delete
-         lmdb-open
-         make-lmdb
          lmdb-set!
          lmdb-ref
-         lmdb-close
          lmdb-count
          lmdb-keys
          lmdb-values
@@ -144,7 +145,7 @@ struct _mdb {
   MDB_cursor *cursor;
 };
 
-struct _mdb *_mdb_init(char *fname, char *dbname, int maxdbs)
+struct _mdb *_mdb_init(char *fname, int maxdbs)
 {
   int rc;
   struct _mdb *m = (struct _mdb *)malloc(sizeof(struct _mdb));
@@ -162,18 +163,32 @@ struct _mdb *_mdb_init(char *fname, char *dbname, int maxdbs)
   {
      chicken_lmdb_exception (rc, 33, "_mdb_init: error in mdb_env_open");
   }
-  if ((rc = mdb_txn_begin(m->env, NULL, 0, &(m->txn))) != 0)
-  {
-     chicken_lmdb_exception (rc, 33, "_mdb_init: error in mdb_txn_begin");
-  }
-  if ((rc = mdb_open(m->txn, dbname, MDB_CREATE, &m->dbi)) != 0)
-  {
-     chicken_lmdb_exception (rc, 28, "_mdb_init: error in mdb_open");
-  }
   m->cursor=NULL;
   return m;
 }
 
+
+int _mdb_begin(struct _mdb *m, char *dbname)
+{
+  int rc;
+  if ((rc = mdb_txn_begin(m->env, NULL, 0, &(m->txn))) != 0)
+  {
+     chicken_lmdb_exception (rc, 34, "_mdb_begin: error in mdb_txn_begin");
+  }
+  if ((rc = mdb_open(m->txn, dbname, MDB_CREATE, &m->dbi)) != 0)
+  {
+     chicken_lmdb_exception (rc, 29, "_mdb_begin: error in mdb_open");
+  }
+  m->cursor=NULL;
+  return rc;
+}
+
+
+void _mdb_end(struct _mdb *m)
+{
+  mdb_txn_commit(m->txn);
+  mdb_close(m->env, m->dbi);
+}
 
 int _mdb_write(struct _mdb *m, unsigned char *k, int klen, unsigned char *v, int vlen)
 {
@@ -239,10 +254,8 @@ void _mdb_key(struct _mdb *m, unsigned char *buf) { memcpy(buf,m->key.mv_data,m-
 int _mdb_value_len(struct _mdb *m) { return m->value.mv_size; }
 void _mdb_value(struct _mdb *m, unsigned char *buf) { memcpy(buf,m->value.mv_data,m->value.mv_size); }
 
-void _mdb_cleanup(struct _mdb *m)
+void _mdb_close(struct _mdb *m)
 {
-  mdb_txn_commit(m->txn);
-  mdb_close(m->env, m->dbi);
   mdb_env_close(m->env);
   free(m);
 }
@@ -278,14 +291,22 @@ int _mdb_count(struct _mdb *m)
 
 
 (define lmdb-init0 (foreign-safe-lambda* 
-                    nonnull-c-pointer ((nonnull-c-string fname) (c-string dbname) (int maxdbs))
-                    "C_return (_mdb_init (fname,dbname,maxdbs));"))
-(define (lmdb-init fname #!key (dbname #f) (maxdbs 0))
-  (lmdb-init0 fname dbname maxdbs))
+                    nonnull-c-pointer ((nonnull-c-string fname) (int maxdbs))
+                    "C_return (_mdb_init (fname,maxdbs));"))
+(define (lmdb-init fname #!key (maxdbs 0))
+  (lmdb-init0 fname maxdbs))
 
-(define lmdb-cleanup (foreign-safe-lambda* 
-                   void ((nonnull-c-pointer m))
-                   "_mdb_cleanup (m);"))
+(define c-lmdb-begin (foreign-safe-lambda* 
+                      int ((nonnull-c-pointer m) (c-string dbname))
+                      "C_return(_mdb_begin (m, dbname));"))
+
+(define c-lmdb-end (foreign-safe-lambda* 
+                    void ((nonnull-c-pointer m))
+                    "_mdb_end (m);"))
+
+(define c-lmdb-close (foreign-safe-lambda* 
+                        void ((nonnull-c-pointer m))
+                        "_mdb_close (m);"))
 
 (define (lmdb-write m key val) 
   (lmdb-log 3 "lmdb-write: ~A ~A = ~A~%" m key val)
@@ -364,12 +385,12 @@ END
      (delete-directory fname)))) 
 
 
-(define (lmdb-open fname #!key (key #f) (dbname #f) (maxdbs 0))
+(define (lmdb-open fname #!key (key #f) (maxdbs 0))
   (lmdb-log 2 "lmdb-open ~A ~A~%" fname key)
   (let ((ctx (and key (lmdb-makectx key))))
     (if (not (file-exists? fname)) (create-directory fname))
     (make-lmdb-session
-     (lmdb-init fname dbname: dbname maxdbs: maxdbs)
+     (lmdb-init fname maxdbs: maxdbs)
      (if (not ctx) identity (lmdb-encoder ctx))
      (if (not ctx) identity (lmdb-decoder ctx)) 
      ctx)))
@@ -377,6 +398,14 @@ END
 
 (define make-lmdb lmdb-open)
 
+
+(define (lmdb-begin s #!key (dbname #f))
+  (lmdb-log 2 "lmdb-begin ~A ~A~%" s dbname)
+  (c-lmdb-begin (lmdb-session-handler s) dbname))
+
+(define (lmdb-end s)
+  (lmdb-log 2 "lmdb-end ~A~%" s)
+  (c-lmdb-end (lmdb-session-handler s)))
 
 (define (lmdb-set! s key val)
   (lmdb-log 2 "lmdb-set! ~A ~A ~A~%" s key val)
@@ -399,10 +428,11 @@ END
     (if u8val (begin (lmdb-value m u8val) (decode u8val)) #f)))
 
 
+
 (define (lmdb-close s) 
   (lmdb-log 2 "lmdb-close ~A~%" s)
   (let ((ctx (lmdb-session-ctx s)))
-    (lmdb-cleanup (lmdb-session-handler s))
+    (c-lmdb-close (lmdb-session-handler s))
     (if ctx (lmdb-destroyctx ctx))))
 
 

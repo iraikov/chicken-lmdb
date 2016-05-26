@@ -7,8 +7,17 @@ management library.
 
 ## Library procedures
 
-`(lmdb-open dbname [key: enckey] [dbname: dbname])`
-Opens or creates LMDB database with optional encryption key and database name.
+`(lmdb-open filename [key: enckey])`
+Opens or creates LMDB database with optional encryption key.
+
+`(lmdb-close db)`
+Closes LMDB database handle.
+
+`(lmdb-begin db [dbname: dbname])`
+Begins LMDB transaction with optional database name.
+
+`(lmdb-end db)`
+Commits and ends LMDB transaction.
 
 `(lmdb-delete dbname)`
 Deletes LMDB database.
@@ -18,9 +27,6 @@ Looks up key in database.
 
 `(lmdb-set! db key value)`
 Sets a key-value pair in the database.
-
-`(lmdb-close db)`
-Closes database handle.
 
 `(lmdb-count db)`
 Returns number of key-value pairs in database.
