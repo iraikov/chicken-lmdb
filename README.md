@@ -49,3 +49,34 @@ Saves SRFI-69 hash table to database.
 `(lmdb->hash-table dbfile [enckey])`
 Load database into SRFI-69 hash table.
 
+## Example
+
+```scheme
+
+;; lmdb encrypted key-value creation and lookup
+
+(let* ((fname (make-pathname "." "mydb.mdb"))
+       (keys (list "k1" 'k2 '(k3)))
+       (values (list 'one 2 "three"))
+       (cryptokey (random-blob 24))
+       (mm (lmdb-open fname key: cryptokey)))
+  (lmdb-begin mm)
+  (let loop ((ks keys) (vs values))
+    (if (> (length ks) 0) 
+        (begin
+          (lmdb-set! mm (string->blob (->string (car ks))) (string->blob (->string (car vs))))
+          (loop (cdr ks) (cdr vs)))))
+  (lmdb-end mm)
+  (lmdb-begin mm)
+  (let ((res (let loop ((ks keys) (vs values))
+               (if (= (length ks) 0) #t
+                   (let ((v (lmdb-ref mm (string->blob (->string (car ks))))))
+                     (if (not (equal? (string->blob (->string (car vs))) v))  #f
+                         (loop (cdr ks) (cdr vs)))))))
+        )
+    (lmdb-close mm)
+    (lmdb-delete fname)
+    res)
+  )
+```
+
