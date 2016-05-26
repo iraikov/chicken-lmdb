@@ -37,6 +37,7 @@
                                     (if (not (equal? (string->blob (->string (car vs))) v))  #f
                                         (loop (cdr ks) (cdr vs)))))))
                        )
+                   (lmdb-end mm)
                    (lmdb-close mm)
                    (lmdb-delete fname)
                    res)

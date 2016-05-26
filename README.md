@@ -74,8 +74,8 @@ Load database into SRFI-69 hash table.
                      (if (not (equal? (string->blob (->string (car vs))) v))  #f
                          (loop (cdr ks) (cdr vs)))))))
         )
+    (lmdb-end mm)
     (lmdb-close mm)
-    (lmdb-delete fname)
     res)
   )
 ```
