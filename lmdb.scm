@@ -143,6 +143,7 @@ struct _mdb {
   MDB_val key, value;
   MDB_txn *txn;
   MDB_cursor *cursor;
+  char *dbname;
 };
 
 struct _mdb *_mdb_init(char *fname, int maxdbs)
@@ -164,13 +165,14 @@ struct _mdb *_mdb_init(char *fname, int maxdbs)
      chicken_lmdb_exception (rc, 33, "_mdb_init: error in mdb_env_open");
   }
   m->cursor=NULL;
+  m->dbname=NULL;
   return m;
 }
 
 
 int _mdb_begin(struct _mdb *m, char *dbname)
 {
-  int rc;
+  int rc, n;
   if ((rc = mdb_txn_begin(m->env, NULL, 0, &(m->txn))) != 0)
   {
      chicken_lmdb_exception (rc, 34, "_mdb_begin: error in mdb_txn_begin");
@@ -180,6 +182,13 @@ int _mdb_begin(struct _mdb *m, char *dbname)
      chicken_lmdb_exception (rc, 29, "_mdb_begin: error in mdb_open");
   }
   m->cursor=NULL;
+  if (dbname != NULL)
+  {
+     n = strnlen(dbname,256);
+     m->dbname = malloc(n+1);
+     strncpy(m->dbname, dbname, n);
+     m->dbname[n] = 0;
+  }
   return rc;
 }
 
@@ -200,7 +209,13 @@ int _mdb_write(struct _mdb *m, unsigned char *k, int klen, unsigned char *v, int
   if ((rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0)) != 0)
   {
      rc = mdb_txn_commit(m->txn);
-     chicken_lmdb_exception (rc, 28, "_mdb_write: error in mdb_put");
+     if (rc == MDB_BAD_TXN) 
+     {
+       _mdb_begin(m, m->dbname);
+       rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0);
+     } else {
+        chicken_lmdb_exception (rc, 28, "_mdb_write: error in mdb_put");
+     }
   }
   return rc;
 }
@@ -257,6 +272,11 @@ void _mdb_value(struct _mdb *m, unsigned char *buf) { memcpy(buf,m->value.mv_dat
 void _mdb_close(struct _mdb *m)
 {
   mdb_env_close(m->env);
+  if (m->dbname != NULL)
+  {
+     free(m->dbname);
+     m->dbname = NULL;
+  }
   free(m);
 }
 
