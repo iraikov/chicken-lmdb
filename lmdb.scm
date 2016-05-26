@@ -1,7 +1,11 @@
 #|
-LambdaNative - a cross-platform Scheme framework
-Copyright (c) 2009-2015, University of British Columbia
-All rights reserved.
+
+Chicken Scheme bindings for lmdb, fast key value database.
+Modified for Chicken Scheme by Ivan Raikov.
+
+Based on lmdb wrapper for LambdaNative - a cross-platform Scheme
+framework Copyright (c) 2009-2015, University of British Columbia All
+rights reserved.
 
 Redistribution and use in source and binary forms, with or
 without modification, are permitted provided that the
@@ -35,8 +39,6 @@ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 |#
-
-;; Wrapper for lmdb, fast key value database
 
 (module lmdb
 
