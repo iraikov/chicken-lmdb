@@ -7,8 +7,8 @@ management library.
 
 ## Library procedures
 
-`(lmdb-open filename [key: enckey])`
-Opens or creates LMDB database with optional encryption key.
+`(lmdb-open filename [key: enckey] [mapsize: size])`
+Opens or creates LMDB database with optional encryption key and map size.
 
 `(lmdb-close db)`
 Closes LMDB database handle.
