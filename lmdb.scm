@@ -146,7 +146,7 @@ struct _mdb {
   char *dbname;
 };
 
-struct _mdb *_mdb_init(char *fname, int maxdbs)
+struct _mdb *_mdb_init(char *fname, int maxdbs, size_t mapsize)
 {
   int rc;
   struct _mdb *m = (struct _mdb *)malloc(sizeof(struct _mdb));
@@ -154,10 +154,18 @@ struct _mdb *_mdb_init(char *fname, int maxdbs)
   {
      chicken_lmdb_exception (rc, 34, "_mdb_init: error in mdb_env_create");
   }
-  if (maxdbs > 0) {
+  if (maxdbs > 0) 
+  {
      if ((rc = mdb_env_set_maxdbs(m->env, maxdbs)) != 0)
      {
         chicken_lmdb_exception (rc, 38, "_mdb_init: error in mdb_env_set_maxdbs");
+     }
+  }
+  if (mapsize > 0) 
+  {
+     if ((rc = mdb_env_set_mapsize(m->env, mapsize)) != 0)
+     {
+        chicken_lmdb_exception (rc, 39, "_mdb_init: error in mdb_env_set_mapsize");
      }
   }
   if ((rc = mdb_env_open(m->env, fname, 0, 0664)) != 0)
@@ -195,9 +203,14 @@ int _mdb_begin(struct _mdb *m, char *dbname)
 
 void _mdb_end(struct _mdb *m)
 {
-  mdb_txn_commit(m->txn);
+  int rc;
+  if ((rc = mdb_txn_commit(m->txn)) != 0) 
+  {
+     chicken_lmdb_exception (rc, 33, "_mdb_end: error in mdb_txn_commit");
+  }
   mdb_close(m->env, m->dbi);
 }
+
 
 int _mdb_write(struct _mdb *m, unsigned char *k, int klen, unsigned char *v, int vlen)
 {
@@ -208,12 +221,17 @@ int _mdb_write(struct _mdb *m, unsigned char *k, int klen, unsigned char *v, int
   m->value.mv_data = v;
   if ((rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0)) != 0)
   {
-     rc = mdb_txn_commit(m->txn);
+     mdb_txn_abort(m->txn);
+     mdb_close(m->env, m->dbi);
      if (rc == MDB_BAD_TXN) 
      {
-       _mdb_begin(m, m->dbname);
-       rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0);
-     } else {
+       assert ((rc = _mdb_begin(m, m->dbname)) == 0);
+       if ((rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0)) != 0)
+       {
+          chicken_lmdb_exception (rc, 28, "_mdb_write: error in mdb_put");
+       }
+     } else 
+       {
         chicken_lmdb_exception (rc, 28, "_mdb_write: error in mdb_put");
      }
   }
@@ -311,10 +329,10 @@ int _mdb_count(struct _mdb *m)
 
 
 (define lmdb-init0 (foreign-safe-lambda* 
-                    nonnull-c-pointer ((nonnull-c-string fname) (int maxdbs))
-                    "C_return (_mdb_init (fname,maxdbs));"))
-(define (lmdb-init fname #!key (maxdbs 0))
-  (lmdb-init0 fname maxdbs))
+                    nonnull-c-pointer ((nonnull-c-string fname) (int maxdbs) (int mapsize))
+                    "C_return (_mdb_init (fname,maxdbs,mapsize));"))
+(define (lmdb-init fname #!key (maxdbs 0) (mapsize 0))
+  (lmdb-init0 fname maxdbs mapsize))
 
 (define c-lmdb-begin (foreign-safe-lambda* 
                       int ((nonnull-c-pointer m) (c-string dbname))
@@ -405,12 +423,12 @@ END
      (delete-directory fname)))) 
 
 
-(define (lmdb-open fname #!key (key #f) (maxdbs 0))
+(define (lmdb-open fname #!key (key #f) (maxdbs 0) (mapsize 0))
   (lmdb-log 2 "lmdb-open ~A ~A~%" fname key)
   (let ((ctx (and key (lmdb-makectx key))))
     (if (not (file-exists? fname)) (create-directory fname))
     (make-lmdb-session
-     (lmdb-init fname maxdbs: maxdbs)
+     (lmdb-init fname maxdbs: maxdbs mapsize: mapsize)
      (if (not ctx) identity (lmdb-encoder ctx))
      (if (not ctx) identity (lmdb-decoder ctx)) 
      ctx)))
