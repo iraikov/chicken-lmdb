@@ -58,7 +58,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
          lmdb-value-len
          lmdb-key
          lmdb-value
-         lmdb-count
          lmdb-index-first
          lmdb-index-next
          lmdb-delete
@@ -357,7 +356,7 @@ int _mdb_count(struct _mdb *m)
      keydata  = C_c_bytevector (key);
      vlen     = C_bytevector_length(val);
      valdata  = C_c_bytevector (val);
-     result   = (void *)_mdb_write(m, keydata, klen, valdata, vlen);
+     result   = _mdb_write(m, keydata, klen, valdata, vlen);
      C_return (result);
 END
 ) m key val))
@@ -371,7 +370,7 @@ END
      C_i_check_bytevector (key);
      klen     = C_bytevector_length(key);
      keydata  = C_c_bytevector (key);
-     result   = (void *)_mdb_read(m, keydata, klen);
+     result   = _mdb_read(m, keydata, klen);
      C_return (result);
 END
 ) m key))
@@ -391,9 +390,9 @@ END
                     unsigned-int ((nonnull-c-pointer m) (scheme-object buf)) 
                     "_mdb_value (m, C_c_bytevector(buf));"))
 
-(define lmdb-count (foreign-safe-lambda* 
-                    unsigned-int ((nonnull-c-pointer m)) 
-                    "C_return (_mdb_count (m));"))
+(define c-lmdb-count (foreign-safe-lambda* 
+                      unsigned-int ((nonnull-c-pointer m)) 
+                      "C_return (_mdb_count (m));"))
 
 (define lmdb-index-first (foreign-safe-lambda* 
                           unsigned-int ((nonnull-c-pointer m)) 
@@ -459,11 +458,12 @@ END
   (let* ((m (lmdb-session-handler s))
          (encode (lmdb-session-encoder s))
          (decode (lmdb-session-decoder s))
-         (u8key (encode key))
-         (res (lmdb-read m u8key))
-         (vlen (if (= res 0) (lmdb-value-len m) #f))
-         (u8val (if vlen (make-blob vlen) #f)))
-    (if u8val (begin (lmdb-value m u8val) (decode u8val)) #f)))
+         (u8key  (encode key))
+         (res    (lmdb-read m u8key))
+         (vlen   (and (= res 0) (lmdb-value-len m)))
+         (u8val  (and vlen (make-blob vlen))))
+    (and u8val (begin (lmdb-value m u8val) (decode u8val)))
+    ))
 
 
 
@@ -476,7 +476,7 @@ END
 
 (define (lmdb-count s)
   (lmdb-log 2 "lmdb-count ~A~%" s)
-  (lmdb-count (lmdb-session-handler s)))
+  (c-lmdb-count (lmdb-session-handler s)))
 
 
 (define (lmdb-get-key s)
