@@ -1,0 +1,17 @@
+language: cpp
+compiler:
+    - gcc
+notifications:
+    email: false
+env:
+before_install:
+    - sudo apt-get update -qq -y
+    - sudo apt-get install chicken-bin liblmdb-dev
+    - git config --global user.name "Travis User"
+    - git config --global user.email "travis@example.net"
+    - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
+script:
+    - sudo chicken-install
+    - csi -s tests/run.scm
+after_success:
+        
