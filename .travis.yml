@@ -6,6 +6,7 @@ notifications:
 env:
 before_install:
     - sudo apt-get update -qq -y
+    - apt-cache search lmdb
     - sudo apt-get install chicken-bin liblmdb-dev
     - git config --global user.name "Travis User"
     - git config --global user.email "travis@example.net"
