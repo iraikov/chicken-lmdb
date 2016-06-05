@@ -160,6 +160,7 @@ struct _mdb *_mdb_init(char *fname, int maxdbs, size_t mapsize)
         chicken_lmdb_exception (rc, 38, "_mdb_init: error in mdb_env_set_maxdbs");
      }
   }
+  printf("mapsize = %zu\n", mapsize);
   if (mapsize > 0) 
   {
      if ((rc = mdb_env_set_mapsize(m->env, mapsize)) != 0)
@@ -340,7 +341,7 @@ int _mdb_stats(struct _mdb *m)
 
 
 (define lmdb-init0 (foreign-safe-lambda* 
-                    nonnull-c-pointer ((nonnull-c-string fname) (int maxdbs) (int mapsize))
+                    nonnull-c-pointer ((nonnull-c-string fname) (int maxdbs) (size_t mapsize))
                     "C_return (_mdb_init (fname,maxdbs,mapsize));"))
 (define (lmdb-init fname #!key (maxdbs 0) (mapsize 0))
   (lmdb-init0 fname maxdbs mapsize))
