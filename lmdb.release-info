@@ -4,6 +4,7 @@
 (uri targz "https://github.com/iraikov/chicken-lmdb/tarball/{egg-release}")
 (uri files-list "http://code.call-cc.org/files-list?egg={egg-name};egg-release={egg-release};chicken-release={chicken-release}" old-uri)
 
+(release "2.2")
 (release "2.1")
 (release "2.0")
 (release "1.2")
