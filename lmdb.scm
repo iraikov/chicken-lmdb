@@ -220,17 +220,20 @@ int _mdb_write(struct _mdb *m, unsigned char *k, int klen, unsigned char *v, int
   m->value.mv_data = v;
   if ((rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0)) != 0)
   {
-     mdb_txn_abort(m->txn);
-     mdb_close(m->env, m->dbi);
-     if (rc == MDB_BAD_TXN) 
+     switch (rc) 
      {
-       assert ((rc = _mdb_begin(m, m->dbname)) == 0);
-       if ((rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0)) != 0)
-       {
-          chicken_lmdb_exception (rc, 28, "_mdb_write: error in mdb_put");
-       }
-     } else 
-       {
+      case MDB_BAD_TXN:
+        mdb_txn_abort(m->txn);
+        mdb_close(m->env, m->dbi);
+        assert ((rc = _mdb_begin(m, m->dbname)) == 0);
+        if ((rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0)) != 0)
+        {
+           chicken_lmdb_exception (rc, 28, "_mdb_write: error in mdb_put");
+        };
+        break;
+      default:
+        mdb_txn_commit(m->txn);
+        mdb_close(m->env, m->dbi);
         chicken_lmdb_exception (rc, 28, "_mdb_write: error in mdb_put");
      }
   }
@@ -304,6 +307,15 @@ int _mdb_count(struct _mdb *m)
   rc = mdb_stat(m->txn, m->dbi, &s);
   return s.ms_entries;
 }
+
+int _mdb_stats(struct _mdb *m)
+{
+  MDB_stat s;
+  int rc;
+  rc = mdb_stat(m->txn, m->dbi, &s);
+  return s.ms_entries;
+}
+
 <#
 
 ;; encode/decode context
