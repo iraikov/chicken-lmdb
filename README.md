@@ -40,7 +40,7 @@ Returns a list of database values.
 `(lmdb-fold f init db)`
 Fold over the keys and values in the database.
 
-`(lmdb-for-each db)`
+`(lmdb-for-each f db)`
 Iterate over the keys and values in the database.
 
 `(hash-table->lmdb t dbfile [enckey])`
