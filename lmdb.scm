@@ -84,6 +84,46 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
         (define (lmdb-log level . x)
           (if (>= (lmdb-debuglevel) level) (apply printf x)))
 
+
+	(define error-code-string
+	  (foreign-lambda c-string "mdb_strerror" int))
+
+	(define code-symbol-map
+	  (alist->hash-table
+	   `((,(foreign-value "MDB_KEYEXIST" int) . mdb-keyexist)
+	     (,(foreign-value "MDB_NOTFOUND" int) . mdb-notfound)
+	     (,(foreign-value "MDB_PAGE_NOTFOUND" int) . mdb-page-notfound)
+	     (,(foreign-value "MDB_CORRUPTED" int) . mdb-corrupted)
+	     (,(foreign-value "MDB_PANIC" int) . mdb-panic)
+	     (,(foreign-value "MDB_VERSION_MISMATCH" int) . mdb-version-mismatch)
+	     (,(foreign-value "MDB_INVALID" int) . mdb-invalid)
+	     (,(foreign-value "MDB_MAP_FULL" int) . mdb-map-full)
+       (,(foreign-value "MDB_DBS_FULL" int) . mdb-dbs-full)
+	     (,(foreign-value "MDB_READERS_FULL" int) . mdb-readers-full)
+	     (,(foreign-value "MDB_TLS_FULL" int) . mdb-tls-full)
+	     (,(foreign-value "MDB_TXN_FULL" int) . mdb-txn-full)
+	     (,(foreign-value "MDB_CURSOR_FULL" int) . mdb-cursor-full)
+	     (,(foreign-value "MDB_PAGE_FULL" int) . mdb-page-full)
+	     (,(foreign-value "MDB_MAP_RESIZED" int) . mdb-map-resized)
+	     (,(foreign-value "MDB_INCOMPATIBLE" int) . mdb-incompatible)
+	     (,(foreign-value "MDB_BAD_RSLOT" int) . mdb-bad-rslot)
+	     (,(foreign-value "MDB_BAD_TXN" int) . mdb-bad-txn)
+	     (,(foreign-value "MDB_BAD_VALSIZE" int) . mdb-bad-valsize)
+	     (,(foreign-value "MDB_BAD_DBI" int) . mdb-bad-dbi))
+	   hash: number-hash
+	   test: =
+	   size: 20))
+	
+	(define (error-code-symbol code)
+	  (hash-table-ref/default code-symbol-map code 'unknown))
+	
+	(define-external (chicken_lmdb_exception (int code)) void
+	  (abort
+	   (make-composite-condition
+	    (make-property-condition 'exn 'message (error-code-string code))
+	    (make-property-condition 'lmdb)
+	    (make-property-condition (error-code-symbol code)))))
+	
 #>
 
 #include <stdio.h>
@@ -103,38 +143,8 @@ static void chicken_Panic (C_char *msg)
   exit (5); /* should never get here */
 }
 
-static void chicken_ThrowException(C_word value) C_noret;
-static void chicken_ThrowException(C_word value)
-{
-  char *aborthook = C_text("\003sysabort");
-
-  C_word *a = C_alloc(C_SIZEOF_STRING(strlen(aborthook)));
-  C_word abort = C_intern2(&a, aborthook);
-
-  abort = C_block_item(abort, 0);
-  if (C_immediatep(abort))
-    Chicken_Panic(C_text("`##sys#abort' is not defined"));
-
-#if defined(C_BINARY_VERSION) && (C_BINARY_VERSION >= 8)
-  C_word rval[3] = { abort, C_SCHEME_UNDEFINED, value };
-  C_do_apply(3, rval);
-#else
-  C_save(value);
-  C_do_apply(1, abort, C_SCHEME_UNDEFINED);
-#endif
-}
-
-void chicken_lmdb_exception (int code, int msglen, const char *msg) 
-{
-  C_word *a;
-  C_word scmmsg;
-  C_word list;
-
-  a = C_alloc (C_SIZEOF_STRING (msglen) + C_SIZEOF_LIST(2));
-  scmmsg = C_string2 (&a, (char *) msg);
-  list = C_list(&a, 2, C_fix(code), scmmsg);
-  chicken_ThrowException(list);
-}
+// see define-external
+void chicken_lmdb_exception(int code);
 
 struct _mdb {
   MDB_env *env;
@@ -151,25 +161,25 @@ struct _mdb *_mdb_init(char *fname, int maxdbs, size_t mapsize)
   struct _mdb *m = (struct _mdb *)malloc(sizeof(struct _mdb));
   if ((rc = mdb_env_create(&m->env)) != 0) 
   {
-     chicken_lmdb_exception (rc, 34, "_mdb_init: error in mdb_env_create");
+     chicken_lmdb_exception (rc);
   }
   if (maxdbs > 0) 
   {
      if ((rc = mdb_env_set_maxdbs(m->env, maxdbs)) != 0)
      {
-        chicken_lmdb_exception (rc, 38, "_mdb_init: error in mdb_env_set_maxdbs");
+        chicken_lmdb_exception (rc);
      }
   }
   if (mapsize > 0) 
   {
      if ((rc = mdb_env_set_mapsize(m->env, mapsize)) != 0)
      {
-        chicken_lmdb_exception (rc, 39, "_mdb_init: error in mdb_env_set_mapsize");
+        chicken_lmdb_exception (rc);
      }
   }
   if ((rc = mdb_env_open(m->env, fname, 0, 0664)) != 0)
   {
-     chicken_lmdb_exception (rc, 33, "_mdb_init: error in mdb_env_open");
+     chicken_lmdb_exception (rc);
   }
   m->cursor=NULL;
   m->dbname=NULL;
@@ -182,11 +192,11 @@ int _mdb_begin(struct _mdb *m, char *dbname)
   int rc, n;
   if ((rc = mdb_txn_begin(m->env, NULL, 0, &(m->txn))) != 0)
   {
-     chicken_lmdb_exception (rc, 34, "_mdb_begin: error in mdb_txn_begin");
+     chicken_lmdb_exception (rc);
   }
   if ((rc = mdb_open(m->txn, dbname, MDB_CREATE, &m->dbi)) != 0)
   {
-     chicken_lmdb_exception (rc, 29, "_mdb_begin: error in mdb_open");
+     chicken_lmdb_exception (rc);
   }
   m->cursor=NULL;
   if (dbname != NULL)
@@ -205,7 +215,7 @@ void _mdb_end(struct _mdb *m)
   int rc;
   if ((rc = mdb_txn_commit(m->txn)) != 0) 
   {
-     chicken_lmdb_exception (rc, 33, "_mdb_end: error in mdb_txn_commit");
+     chicken_lmdb_exception (rc);
   }
   mdb_close(m->env, m->dbi);
 }
@@ -228,13 +238,13 @@ int _mdb_write(struct _mdb *m, unsigned char *k, int klen, unsigned char *v, int
         assert ((rc = _mdb_begin(m, m->dbname)) == 0);
         if ((rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0)) != 0)
         {
-           chicken_lmdb_exception (rc, 28, "_mdb_write: error in mdb_put");
+           chicken_lmdb_exception (rc);
         };
         break;
       default:
         mdb_txn_commit(m->txn);
         mdb_close(m->env, m->dbi);
-        chicken_lmdb_exception (rc, 28, "_mdb_write: error in mdb_put");
+        chicken_lmdb_exception (rc);
      }
   }
   return rc;
@@ -247,7 +257,7 @@ int _mdb_read(struct _mdb *m, unsigned char *k, int klen)
   m->key.mv_data = k;
   if ((rc = mdb_get(m->txn,m->dbi,&m->key, &m->value)) != 0)
   {
-     chicken_lmdb_exception (rc, 27, "_mdb_read: error in mdb_get");
+     chicken_lmdb_exception (rc);
   }
   return rc;
 }
@@ -258,11 +268,11 @@ int _mdb_index_first(struct _mdb *m)
   if (m->cursor) { mdb_cursor_close(m->cursor); }
   if ((rc = mdb_cursor_open(m->txn, m->dbi, &(m->cursor))) != 0)
   {
-     chicken_lmdb_exception (rc, 42, "_mdb_index_first: error in mdb_cursor_open");
+     chicken_lmdb_exception (rc);
   } else 
     if ((rc = mdb_cursor_get(m->cursor, &(m->key), &(m->value), MDB_FIRST)) != 0)
     {
-     chicken_lmdb_exception (rc, 42, "_mdb_index_first: error in mdb_cursor_get");
+     chicken_lmdb_exception (rc);
     }
   return rc;
 }
