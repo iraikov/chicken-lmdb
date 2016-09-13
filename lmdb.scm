@@ -1,7 +1,7 @@
 #|
 
 Chicken Scheme bindings for lmdb, fast key value database.
-Modified for Chicken Scheme by Ivan Raikov.
+Modified for Chicken Scheme by Ivan Raikov and Caolan McMahon.
 
 Based on lmdb wrapper for LambdaNative - a cross-platform Scheme
 framework Copyright (c) 2009-2015, University of British Columbia All
@@ -129,6 +129,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #include <lmdb.h>
 
