@@ -146,3 +146,17 @@
                  ))
              )
             )
+
+(test-group "lmdb mdb-notfound condition"
+            (let* ((fname (make-pathname "." "unittest.mdb")))
+              (lmdb-delete fname)
+              (let ((mm (lmdb-open fname maxdbs: 2)))
+                (lmdb-begin mm)
+                (test "condition-case for get missing key"
+                      'missing
+                      (condition-case (lmdb-ref mm (string->blob "asdfasdf"))
+                        ((exn lmdb mdb-notfound) 'missing)))
+                (lmdb-end mm)
+                (lmdb-close mm))))
+
+(test-exit)
