@@ -117,12 +117,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	(define (error-code-symbol code)
 	  (hash-table-ref/default code-symbol-map code 'unknown))
 	
-	(define-external (chicken_lmdb_exception (int code)) void
-	  (abort
-	   (make-composite-condition
-	    (make-property-condition 'exn 'message (error-code-string code))
-	    (make-property-condition 'lmdb)
-	    (make-property-condition (error-code-symbol code)))))
+	(define-external (chicken_lmdb_condition (int code)) scheme-object
+	  (make-composite-condition
+	   (make-property-condition 'exn 'message (error-code-string code))
+	   (make-property-condition 'lmdb)
+	   (make-property-condition (error-code-symbol code))))
 	
 #>
 
@@ -144,8 +143,34 @@ static void chicken_Panic (C_char *msg)
   exit (5); /* should never get here */
 }
 
+static void chicken_ThrowException(C_word value) C_noret;
+static void chicken_ThrowException(C_word value)
+{
+  char *aborthook = C_text("\003sysabort");
+
+  C_word *a = C_alloc(C_SIZEOF_STRING(strlen(aborthook)));
+  C_word abort = C_intern2(&a, aborthook);
+
+  abort = C_block_item(abort, 0);
+  if (C_immediatep(abort))
+    Chicken_Panic(C_text("`##sys#abort' is not defined"));
+
+#if defined(C_BINARY_VERSION) && (C_BINARY_VERSION >= 8)
+  C_word rval[3] = { abort, C_SCHEME_UNDEFINED, value };
+  C_do_apply(3, rval);
+#else
+  C_save(value);
+  C_do_apply(1, abort, C_SCHEME_UNDEFINED);
+#endif
+}
+
 // see define-external
-void chicken_lmdb_exception(int code);
+C_word chicken_lmdb_condition(int code);
+
+void chicken_lmdb_exception (int code) 
+{
+  chicken_ThrowException(chicken_lmdb_condition(code));
+}
 
 struct _mdb {
   MDB_env *env;
