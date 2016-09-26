@@ -15,8 +15,8 @@
     ))
 
 
-;(test-group "lmdb encrypted key-value creation and lookup"
-            ;(test-assert
+(test-group "lmdb encrypted key-value creation and lookup"
+            (test-assert
              (let* ((fname (make-pathname "." "unittest.mdb")))
                (lmdb-delete fname)
                (let* ((keys (list "k1" 'k2 '(k3)))
@@ -42,7 +42,7 @@
                    (lmdb-delete fname)
                    res)
                  ))
-;             ))
+             ))
 
 
 (test-group "lmdb unencrypted key-value creation and lookup"
