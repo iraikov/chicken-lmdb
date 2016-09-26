@@ -53,6 +53,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	 lmdb-max-key-size
          lmdb-begin
          lmdb-end
+	 lmdb-abort
          lmdb-write
          lmdb-read
          lmdb-key-len
@@ -247,6 +248,12 @@ void _mdb_end(struct _mdb *m)
   mdb_close(m->env, m->dbi);
 }
 
+void _mdb_abort(struct _mdb *m)
+{
+  mdb_txn_abort(m->txn);
+  mdb_close(m->env, m->dbi);
+}
+
 
 int _mdb_write(struct _mdb *m, unsigned char *k, int klen, unsigned char *v, int vlen)
 {
@@ -390,6 +397,10 @@ int _mdb_stats(struct _mdb *m)
                     void ((nonnull-c-pointer m))
                     "_mdb_end (m);"))
 
+(define c-lmdb-abort (foreign-safe-lambda* 
+			 void ((nonnull-c-pointer m))
+		       "_mdb_abort (m);"))
+
 (define c-lmdb-close (foreign-safe-lambda* 
                         void ((nonnull-c-pointer m))
                         "_mdb_close (m);"))
@@ -499,6 +510,10 @@ END
 (define (lmdb-end s)
   (lmdb-log 2 "lmdb-end ~A~%" s)
   (c-lmdb-end (lmdb-session-handler s)))
+
+(define (lmdb-abort s)
+  (lmdb-log 2 "lmdb-abort ~A~%" s)
+  (c-lmdb-abort (lmdb-session-handler s)))
 
 (define (lmdb-set! s key val)
   (lmdb-log 2 "lmdb-set! ~A ~A ~A~%" s key val)
