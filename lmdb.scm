@@ -155,7 +155,7 @@ static void chicken_ThrowException(C_word value)
 
   abort = C_block_item(abort, 0);
   if (C_immediatep(abort))
-    Chicken_Panic(C_text("`##sys#abort' is not defined"));
+    chicken_Panic(C_text("`##sys#abort' is not defined"));
 
 #if defined(C_BINARY_VERSION) && (C_BINARY_VERSION >= 8)
   C_word rval[3] = { abort, C_SCHEME_UNDEFINED, value };
