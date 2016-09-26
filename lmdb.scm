@@ -50,6 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
          lmdb-init
          lmdb-open
          lmdb-close
+	 lmdb-max-key-size
          lmdb-begin
          lmdb-end
          lmdb-write
@@ -393,6 +394,11 @@ int _mdb_stats(struct _mdb *m)
                         void ((nonnull-c-pointer m))
                         "_mdb_close (m);"))
 
+(define c-lmdb-max-key-size
+  (foreign-lambda* int (((nonnull-c-pointer (struct _mdb)) m))
+    "int size = mdb_env_get_maxkeysize(m->env);
+     C_return(size);"))
+
 (define (lmdb-write m key val) 
   (lmdb-log 3 "lmdb-write: ~A ~A = ~A~%" m key val)
   ((foreign-safe-lambda* int ((nonnull-c-pointer m) (scheme-object key) (scheme-object val))
@@ -483,6 +489,8 @@ END
 
 (define make-lmdb lmdb-open)
 
+(define (lmdb-max-key-size s)
+  (c-lmdb-max-key-size (lmdb-session-handler s)))
 
 (define (lmdb-begin s #!key (dbname #f))
   (lmdb-log 2 "lmdb-begin ~A ~A~%" s dbname)
