@@ -669,10 +669,15 @@ END
            (t (make-hash-table)))
       (if m 
           (begin
+            (lmdb-begin s)
             (lmdb-index-first m) 
-            (let ((k0 (lmdb-key s))
-                  (v0 (lmdb-value s)))
-              (hash-table-set! t k0 v0))
+            (let* ((klen (lmdb-key-len m))
+                   (k (make-blob klen))
+                   (vlen (lmdb-value-len m))
+                   (v (make-blob vlen)))
+              (lmdb-key m k)
+              (lmdb-value m v)
+              (hash-table-set! t k v))
             (let ((fnl (let loop ()
                          (let* ((res (lmdb-index-next m))
                                 (klen (if (= res 0) (lmdb-key-len m) #f))
@@ -685,6 +690,7 @@ END
                                t (begin
                                    (hash-table-set! t k v)
                                    (loop)))))))
+              (lmdb-end s)
               (lmdb-close s)
               fnl
               ))

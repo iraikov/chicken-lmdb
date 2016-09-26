@@ -1,4 +1,4 @@
-(use lmdb files posix srfi-4 test)
+(use lmdb files posix srfi-4 srfi-69 test)
 
 (randomize)
 
@@ -15,8 +15,8 @@
     ))
 
 
-(test-group "lmdb encrypted key-value creation and lookup"
-            (test-assert
+;(test-group "lmdb encrypted key-value creation and lookup"
+            ;(test-assert
              (let* ((fname (make-pathname "." "unittest.mdb")))
                (lmdb-delete fname)
                (let* ((keys (list "k1" 'k2 '(k3)))
@@ -42,7 +42,7 @@
                    (lmdb-delete fname)
                    res)
                  ))
-             ))
+;             ))
 
 
 (test-group "lmdb unencrypted key-value creation and lookup"
@@ -73,7 +73,7 @@
                  ))
              ))
 
-(test-group "lmdb unencrypted key-value creation and fold"
+(test-group "lmdb unencrypted key-value creation and fold / for-each"
              (let* ((fname (make-pathname "." "unittest.mdb")))
                (lmdb-delete fname)
                (let* ((keys (list "k1" 'k2 '(k3)))
@@ -87,16 +87,48 @@
                          (loop (cdr ks) (cdr vs)))))
                  (lmdb-end mm)
                  (lmdb-begin mm)
-                 (let* ((res (lmdb-fold (lambda (k v ax) (cons (cons k v) ax)) '() mm))
-                        )
+                 (let ((res (lmdb-fold (lambda (k v ax) (cons (cons k v) ax)) '() mm)))
                    (lmdb-end mm)
-                   (lmdb-close mm)
-                   (lmdb-delete fname)
                    (test res (map (lambda (k v) (cons (string->blob (->string k)) (string->blob (->string v)))) 
                                   (list 'k2 "k1" '(k3))
-                                  (list 2 'one "three")))
-                   ))
-             ))
+                                  (list 2 'one "three"))))
+                 (lmdb-begin mm)
+                 (let ((res (make-parameter '())))
+                   (lmdb-for-each (lambda (k v) (res (cons (cons k v) (res)))) mm)
+                   (lmdb-end mm)
+                   (test (res)
+                         (map (lambda (k v) (cons (string->blob (->string k)) (string->blob (->string v)))) 
+                              (list 'k2 "k1" '(k3))
+                              (list 2 'one "three"))))
+                 (lmdb-close mm)
+                 (lmdb-delete fname)
+                 ))
+             )
+
+
+(test-group "lmdb unencrypted key-value creation and conversion to/from hash tables"
+             (let* ((fname (make-pathname "." "unittest.mdb")))
+               (lmdb-delete fname)
+               (let* ((keys (list "k1" 'k2 '(k3)))
+                      (values (list 'one 2 "three"))
+                      (mm (lmdb-open fname)))
+                 (lmdb-begin mm)
+                 (let loop ((ks keys) (vs values))
+                   (if (> (length ks) 0) 
+                       (begin
+                         (lmdb-set! mm (string->blob (->string (car ks))) (string->blob (->string (car vs))))
+                         (loop (cdr ks) (cdr vs)))))
+                 (lmdb-end mm)
+                 (lmdb-close mm)
+                 (let ((ht (lmdb->hash-table fname)))
+                   ht)
+                   ;(test (hash-table->alist ht)
+                   ;      (map (lambda (k v) (cons (string->blob (->string k)) (string->blob (->string v)))) 
+                   ;           (list 'k2 "k1" '(k3))
+                   ;           (list 2 'one "three"))))
+                 (lmdb-delete fname)
+                 ))
+             )
 
 
 (test-group "lmdb named database creation and lookup"
