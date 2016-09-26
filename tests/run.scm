@@ -159,4 +159,31 @@
                 (lmdb-end mm)
                 (lmdb-close mm))))
 
+(test-group "abort transaction"
+	    (let* ((fname (make-pathname "." "unittest.mdb")))
+              (lmdb-delete fname)
+              (let ((mm (lmdb-open fname maxdbs: 2)))
+                (lmdb-begin mm)
+		;; set foo
+		(lmdb-set! mm (string->blob "foo") (string->blob "one"))
+		(lmdb-end mm)
+		(lmdb-begin mm)
+		;; foo is still set
+		(test (string->blob "one")
+		      (lmdb-ref mm (string->blob "foo")))
+		;; set bar
+		(lmdb-set! mm (string->blob "bar") (string->blob "two"))
+		;; abort
+		(lmdb-abort mm)
+		(lmdb-begin mm)
+		;; foo is still set
+		(test (string->blob "one")
+		      (lmdb-ref mm (string->blob "foo")))
+		;; bar is not set
+		(test 'missing
+		      (condition-case (lmdb-ref mm (string->blob "bar"))
+			((exn lmdb mdb-notfound) 'missing)))
+                (lmdb-end mm)
+                (lmdb-close mm))))
+
 (test-exit)
