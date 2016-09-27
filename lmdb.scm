@@ -63,6 +63,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
          lmdb-index-first
          lmdb-index-next
          lmdb-delete
+         lmdb-delete-database
          lmdb-set!
          lmdb-ref
          lmdb-count
@@ -480,7 +481,12 @@ END
 
 
 (define (lmdb-delete fname)
-  (lmdb-log 2 "lmdb-delete ~A~%" fname)
+  (abort
+   (make-property-condition 'exn
+    'message "lmdb-delete is deprecated, use lmdb-delete-database instead")))
+
+(define (lmdb-delete-database fname)
+  (lmdb-log 2 "lmdb-delete-database ~A~%" fname)
   (if (file-exists? fname) (begin
      (delete-file (make-pathname fname "data.mdb"))
      (delete-file (make-pathname fname "lock.mdb"))
@@ -654,7 +660,7 @@ END
 
 (define (hash-table->lmdb t mfile . key)
   (lmdb-log 2 "table->lmdb ~A ~A ~A~%" t mfile key)
-  (lmdb-delete mfile)
+  (lmdb-delete-database mfile)
   (let ((s (apply lmdb-open (append (list mfile) key))))
     (hash-table-for-each t (lambda (k v) (lmdb-set! s (string->blob (symbol->string k)) v)))
     (lmdb-close s) #t))

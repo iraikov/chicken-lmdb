@@ -18,7 +18,7 @@
 (test-group "lmdb encrypted key-value creation and lookup"
             (test-assert
              (let* ((fname (make-pathname "." "unittest.mdb")))
-               (lmdb-delete fname)
+               (lmdb-delete-database fname)
                (let* ((keys (list "k1" 'k2 '(k3)))
                       (values (list 'one 2 "three"))
                       (cryptokey (random-blob 24))
@@ -39,7 +39,7 @@
                        )
                    (lmdb-end mm)
                    (lmdb-close mm)
-                   (lmdb-delete fname)
+                   (lmdb-delete-database fname)
                    res)
                  ))
              ))
@@ -48,7 +48,7 @@
 (test-group "lmdb unencrypted key-value creation and lookup"
             (test-assert
              (let* ((fname (make-pathname "." "unittest.mdb")))
-               (lmdb-delete fname)
+               (lmdb-delete-database fname)
                (let* ((keys (list "k1" 'k2 '(k3)))
                       (values (list 'one 2 "three"))
                       (mm (lmdb-open fname)))
@@ -68,14 +68,14 @@
                         )
                    (lmdb-end mm)
                    (lmdb-close mm)
-                   (lmdb-delete fname)
+                   (lmdb-delete-database fname)
                    res)
                  ))
              ))
 
 (test-group "lmdb unencrypted key-value creation and fold / for-each"
              (let* ((fname (make-pathname "." "unittest.mdb")))
-               (lmdb-delete fname)
+               (lmdb-delete-database fname)
                (let* ((keys (list "k1" 'k2 '(k3)))
                       (values (list 'one 2 "three"))
                       (mm (lmdb-open fname)))
@@ -101,14 +101,14 @@
                               (list 'k2 "k1" '(k3))
                               (list 2 'one "three"))))
                  (lmdb-close mm)
-                 (lmdb-delete fname)
+                 (lmdb-delete-database fname)
                  ))
              )
 
 
 (test-group "lmdb unencrypted key-value creation and conversion to/from hash tables"
              (let* ((fname (make-pathname "." "unittest.mdb")))
-               (lmdb-delete fname)
+               (lmdb-delete-database fname)
                (let* ((keys (list "k1" 'k2 '(k3)))
                       (values (list 'one 2 "three"))
                       (mm (lmdb-open fname)))
@@ -126,7 +126,7 @@
                    ;      (map (lambda (k v) (cons (string->blob (->string k)) (string->blob (->string v)))) 
                    ;           (list 'k2 "k1" '(k3))
                    ;           (list 2 'one "three"))))
-                 (lmdb-delete fname)
+                 (lmdb-delete-database fname)
                  ))
              )
 
@@ -134,7 +134,7 @@
 (test-group "lmdb named database creation and lookup"
             (test-assert
              (let* ((fname (make-pathname "." "unittest.mdb")))
-               (lmdb-delete fname)
+               (lmdb-delete-database fname)
                (let* ((keys (list "k1" 'k2 '(k3)))
                       (values (list 'one 2 "three"))
                       )
@@ -172,7 +172,7 @@
                             )
                        (lmdb-end mm)
                        (lmdb-close mm)
-                       (lmdb-delete fname)
+                       (lmdb-delete-database fname)
                        (and res1 res2))
                      ))
                  ))
@@ -181,7 +181,7 @@
 
 (test-group "lmdb mdb-notfound condition"
             (let* ((fname (make-pathname "." "unittest.mdb")))
-              (lmdb-delete fname)
+              (lmdb-delete-database fname)
               (let ((mm (lmdb-open fname maxdbs: 2)))
                 (lmdb-begin mm)
                 (test "condition-case for get missing key"
@@ -193,7 +193,7 @@
 
 (test-group "abort transaction"
 	    (let* ((fname (make-pathname "." "unittest.mdb")))
-              (lmdb-delete fname)
+              (lmdb-delete-database fname)
               (let ((mm (lmdb-open fname maxdbs: 2)))
                 (lmdb-begin mm)
 		;; set foo
