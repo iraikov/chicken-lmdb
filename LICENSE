@@ -1,5 +1,8 @@
-Copyright (c) 2016, Ivan Raikov
-All rights reserved.
+Copyright (c) 2016, Ivan Raikov, Caolan McMahon.
+
+This code is based on the lmdb wrapper for LambdaNative - a
+cross-platform Scheme framework. Copyright (c) 2009-2015, University
+of British Columbia All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
