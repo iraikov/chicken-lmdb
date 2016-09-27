@@ -19,7 +19,10 @@ Begins LMDB transaction with optional database name.
 `(lmdb-end db)`
 Commits and ends LMDB transaction.
 
-`(lmdb-delete dbname)`
+`(lmdb-abort db)`
+Aborts LMDB transaction.
+
+`(lmdb-delete-database dbname)`
 Deletes LMDB database.
 
 `(lmdb-ref db key)`
@@ -36,6 +39,18 @@ Returns a list of database keys.
 
 `(lmdb-values db)`
 Returns a list of database values.
+
+`(lmdb-key-len m)`
+Returns the length of the current key.
+
+`(lmdb-value-len m)`
+Returns the length of the current value.
+
+`(lmdb-key m buf)`
+Copies the current key to the specified blob.
+
+`(lmdb-value m buf)`
+Copies the current value to the specified blob.
 
 `(lmdb-fold f init db)`
 Fold over the keys and values in the database.
