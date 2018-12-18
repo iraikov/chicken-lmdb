@@ -40,52 +40,56 @@ OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 |#
 
-(module lmdb
+(module lmdb-ht
 
         (
-         lmdb-debuglevel
-         lmdb-makectx
-         lmdb-destroyctx
-         make-lmdb
-         lmdb-init
-         lmdb-open
-         lmdb-close
-	 lmdb-max-key-size
-         lmdb-begin
-         lmdb-end
-	 lmdb-abort
-         lmdb-write
-         lmdb-read
-         lmdb-key-len
-         lmdb-value-len
-         lmdb-key
-         lmdb-value
-         lmdb-index-first
-         lmdb-index-next
-         lmdb-delete
-         lmdb-delete-database
-         lmdb-set!
-         lmdb-ref
-         lmdb-count
-         lmdb-keys
-         lmdb-values
-         lmdb-fold
-         lmdb-for-each
-         hash-table->lmdb
-         lmdb->hash-table
+         debuglevel
+         make-context
+         destroy-context!
+         db-init
+         db-open
+         db-close
+	 db-max-key-size
+         db-begin
+         db-end
+	 db-abort
+         db-write
+         db-read
+         db-key-len
+         db-value-len
+         db-key
+         db-value
+         db-index-first
+         db-index-next
+         db-delete
+         db-delete-database
+         db-set!
+         db-ref
+         db-count
+         db-keys
+         db-values
+         db-fold
+         db-for-each
+         hash-table->db
+         db->hash-table
          )
 
+	(import scheme (chicken base) (chicken foreign) (chicken blob)
+                (only (chicken format) printf fprintf sprintf)
+                (only (chicken pathname) make-pathname)
+                (only (chicken file) create-directory delete-directory
+                      delete-file file-exists?)
+                (chicken condition) 
+                srfi-69  (prefix rabbit rabbit:))
         
-	(import scheme chicken foreign)
-        (import (only extras printf)
-                 (only data-structures identity)
-                (only posix create-directory delete-directory)
-                (only files make-pathname))
-        (require-extension srfi-69 rabbit)
+	;(import scheme (chicken base) (chicken foreign) (chicken blob) 
+                ;
+                ;(only (chicken files) make-pathname  create-directory delete-directory)
+         ;       
 
-        (define lmdb-debuglevel (make-parameter 0))
-        (define (lmdb-log level . x)
-          (if (>= (lmdb-debuglevel) level) (apply printf x)))
+        (define debuglevel (make-parameter 0))
+        (define (logger level . x)
+          (if (>= (debuglevel) level) (apply printf x)))
 
 
 	(define error-code-string
@@ -101,7 +105,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	     (,(foreign-value "MDB_VERSION_MISMATCH" int) . mdb-version-mismatch)
 	     (,(foreign-value "MDB_INVALID" int) . mdb-invalid)
 	     (,(foreign-value "MDB_MAP_FULL" int) . mdb-map-full)
-       (,(foreign-value "MDB_DBS_FULL" int) . mdb-dbs-full)
+             (,(foreign-value "MDB_DBS_FULL" int) . mdb-dbs-full)
 	     (,(foreign-value "MDB_READERS_FULL" int) . mdb-readers-full)
 	     (,(foreign-value "MDB_TLS_FULL" int) . mdb-tls-full)
 	     (,(foreign-value "MDB_TXN_FULL" int) . mdb-txn-full)
@@ -365,18 +369,18 @@ int _mdb_stats(struct _mdb *m)
 
 ;; encode/decode context
 
-(define lmdb-makectx rabbit-make)
+(define make-context rabbit:make-context)
 
-(define lmdb-destroyctx rabbit-destroy!)
+(define destroy-context! rabbit:destroy-context!)
 
-(define (lmdb-encoder keyctx)
-  (lambda (obj) (rabbit-encode! keyctx obj)))
+(define (db-encoder keyctx)
+  (lambda (obj) (rabbit:encode! keyctx obj)))
 
-(define (lmdb-decoder keyctx)
+(define (db-decoder keyctx)
   (lambda (u8v) 
     (condition-case 
-     (rabbit-decode! keyctx u8v)
-     [var () (begin (warning "lmdb-decoder" "failed to deserialize: " var)
+     (rabbit:decode! keyctx u8v)
+     [var () (begin (warning "db-decoder" "failed to deserialize: " var)
                     'LMDB_FAILURE)])
     ))
 
@@ -384,11 +388,11 @@ int _mdb_stats(struct _mdb *m)
 ;; ffi
 
 
-(define lmdb-init0 (foreign-safe-lambda* 
+(define db-init0 (foreign-safe-lambda* 
                     nonnull-c-pointer ((nonnull-c-string fname) (int maxdbs) (size_t mapsize))
                     "C_return (_mdb_init (fname,maxdbs,mapsize));"))
-(define (lmdb-init fname #!key (maxdbs 0) (mapsize 0))
-  (lmdb-init0 fname maxdbs mapsize))
+(define (db-init fname #!key (maxdbs 0) (mapsize 0))
+  (db-init0 fname maxdbs mapsize))
 
 (define c-lmdb-begin (foreign-safe-lambda* 
                       int ((nonnull-c-pointer m) (c-string dbname))
@@ -411,8 +415,8 @@ int _mdb_stats(struct _mdb *m)
     "int size = mdb_env_get_maxkeysize(m->env);
      C_return(size);"))
 
-(define (lmdb-write m key val) 
-  (lmdb-log 3 "lmdb-write: ~A ~A = ~A~%" m key val)
+(define (db-write m key val) 
+  (logger 3 "db-write: ~A ~A = ~A~%" m key val)
   ((foreign-safe-lambda* int ((nonnull-c-pointer m) (scheme-object key) (scheme-object val))
 #<<END
      int klen, vlen, result; void* keydata, *valdata;
@@ -428,8 +432,8 @@ END
 ) m key val))
 
 
-(define (lmdb-read m key) 
-  (lmdb-log 3 "lmdb-read: ~A~%" key)
+(define (db-read m key) 
+  (logger 3 "db-read: ~A~%" key)
   ((foreign-safe-lambda* int ((nonnull-c-pointer m) (scheme-object key))
 #<<END
      int klen, result; void* keydata;
@@ -442,17 +446,17 @@ END
 ) m key))
 
 
-(define lmdb-key-len (foreign-safe-lambda* 
+(define db-key-len (foreign-safe-lambda* 
+                    unsigned-int ((nonnull-c-pointer m)) 
+                    "C_return (_mdb_key_len (m));"))
+(define db-value-len (foreign-safe-lambda* 
                       unsigned-int ((nonnull-c-pointer m)) 
-                      "C_return (_mdb_key_len (m));"))
-(define lmdb-value-len (foreign-safe-lambda* 
-                        unsigned-int ((nonnull-c-pointer m)) 
-                        "C_return (_mdb_value_len (m));"))
+                      "C_return (_mdb_value_len (m));"))
 
-(define lmdb-key (foreign-safe-lambda* 
+(define db-key (foreign-safe-lambda* 
                   unsigned-int ((nonnull-c-pointer m) (scheme-object buf)) 
                   "_mdb_key (m, C_c_bytevector(buf));"))
-(define lmdb-value (foreign-safe-lambda* 
+(define db-value (foreign-safe-lambda* 
                     unsigned-int ((nonnull-c-pointer m) (scheme-object buf)) 
                     "_mdb_value (m, C_c_bytevector(buf));"))
 
@@ -460,10 +464,10 @@ END
                       unsigned-int ((nonnull-c-pointer m)) 
                       "C_return (_mdb_count (m));"))
 
-(define lmdb-index-first (foreign-safe-lambda* 
+(define db-index-first (foreign-safe-lambda* 
                           unsigned-int ((nonnull-c-pointer m)) 
                           "C_return (_mdb_index_first (m));"))
-(define lmdb-index-next (foreign-safe-lambda* 
+(define db-index-next (foreign-safe-lambda* 
                          unsigned-int ((nonnull-c-pointer m)) 
                          "C_return (_mdb_index_next (m));"))
 
@@ -480,177 +484,176 @@ END
   )
 
 
-(define (lmdb-delete fname)
+(define (db-delete fname)
   (abort
    (make-property-condition 'exn
-    'message "lmdb-delete is deprecated, use lmdb-delete-database instead")))
+    'message "db-delete is deprecated, use db-delete-database instead")))
 
-(define (lmdb-delete-database fname)
-  (lmdb-log 2 "lmdb-delete-database ~A~%" fname)
+(define (db-delete-database fname)
+  (logger 2 "db-delete-database ~A~%" fname)
   (if (file-exists? fname) (begin
      (delete-file (make-pathname fname "data.mdb"))
      (delete-file (make-pathname fname "lock.mdb"))
      (delete-directory fname)))) 
 
 
-(define (lmdb-open fname #!key (key #f) (maxdbs 0) (mapsize 0))
-  (lmdb-log 2 "lmdb-open ~A ~A~%" fname key)
-  (let ((ctx (and key (lmdb-makectx key))))
+(define (db-open fname #!key (key #f) (maxdbs 0) (mapsize 0))
+  (logger 2 "db-open ~A ~A~%" fname key)
+  (let ((ctx (and key (make-context key))))
     (if (not (file-exists? fname)) (create-directory fname))
     (make-lmdb-session
-     (lmdb-init fname maxdbs: maxdbs mapsize: mapsize)
-     (if (not ctx) identity (lmdb-encoder ctx))
-     (if (not ctx) identity (lmdb-decoder ctx)) 
+     (db-init fname maxdbs: maxdbs mapsize: mapsize)
+     (if (not ctx) identity (db-encoder ctx))
+     (if (not ctx) identity (db-decoder ctx)) 
      ctx)))
 
 
-(define make-lmdb lmdb-open)
 
-(define (lmdb-max-key-size s)
+(define (db-max-key-size s)
   (c-lmdb-max-key-size (lmdb-session-handler s)))
 
-(define (lmdb-begin s #!key (dbname #f))
-  (lmdb-log 2 "lmdb-begin ~A ~A~%" s dbname)
+(define (db-begin s #!key (dbname #f))
+  (logger 2 "db-begin ~A ~A~%" s dbname)
   (c-lmdb-begin (lmdb-session-handler s) dbname))
 
-(define (lmdb-end s)
-  (lmdb-log 2 "lmdb-end ~A~%" s)
+(define (db-end s)
+  (logger 2 "db-end ~A~%" s)
   (c-lmdb-end (lmdb-session-handler s)))
 
-(define (lmdb-abort s)
-  (lmdb-log 2 "lmdb-abort ~A~%" s)
+(define (db-abort s)
+  (logger 2 "db-abort ~A~%" s)
   (c-lmdb-abort (lmdb-session-handler s)))
 
-(define (lmdb-set! s key val)
-  (lmdb-log 2 "lmdb-set! ~A ~A ~A~%" s key val)
+(define (db-set! s key val)
+  (logger 2 "db-set! ~A ~A ~A~%" s key val)
   (let* ((lmdb-ptr (lmdb-session-handler s))
          (lmdb-encode (lmdb-session-encoder s))
          (u8key (lmdb-encode key))
          (u8val (lmdb-encode val)))
-    (lmdb-write lmdb-ptr u8key u8val)))
+    (db-write lmdb-ptr u8key u8val)))
 
 
-(define (lmdb-ref s key)
-  (lmdb-log 2 "lmdb-ref ~A ~A~%" s key)
+(define (db-ref s key)
+  (logger 2 "db-ref ~A ~A~%" s key)
   (let* ((m (lmdb-session-handler s))
          (encode (lmdb-session-encoder s))
          (decode (lmdb-session-decoder s))
          (u8key  (encode key))
-         (res    (lmdb-read m u8key))
-         (vlen   (and (= res 0) (lmdb-value-len m)))
+         (res    (db-read m u8key))
+         (vlen   (and (= res 0) (db-value-len m)))
          (u8val  (and vlen (make-blob vlen))))
-    (and u8val (begin (lmdb-value m u8val) (decode u8val)))
+    (and u8val (begin (db-value m u8val) (decode u8val)))
     ))
 
 
 
-(define (lmdb-close s) 
-  (lmdb-log 2 "lmdb-close ~A~%" s)
+(define (db-close s) 
+  (logger 2 "db-close ~A~%" s)
   (let ((ctx (lmdb-session-ctx s)))
     (c-lmdb-close (lmdb-session-handler s))
-    (if ctx (lmdb-destroyctx ctx))))
+    (if ctx (destroy-context! ctx))))
 
 
-(define (lmdb-count s)
-  (lmdb-log 2 "lmdb-count ~A~%" s)
+(define (db-count s)
+  (logger 2 "db-count ~A~%" s)
   (c-lmdb-count (lmdb-session-handler s)))
 
 
-(define (lmdb-get-key s)
-  (lmdb-log 2 "lmdb-get-key ~A~%" s)
+(define (db-get-key s)
+  (logger 2 "db-get-key ~A~%" s)
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
-    (let* ((klen (lmdb-key-len m))
+    (let* ((klen (db-key-len m))
            (k (make-blob klen)))
-      (lmdb-key m k) 
+      (db-key m k) 
       (decode k)
       ))
   )
 
-(define (lmdb-keys s)
-  (lmdb-log 2 "lmdb-keys ~A~%" s)
+(define (db-keys s)
+  (logger 2 "db-keys ~A~%" s)
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
-    (lmdb-index-first m)
-    (let loop ((idx (list (lmdb-get-key s))))
-      (let ((res (lmdb-index-next m)))
+    (db-index-first m)
+    (let loop ((idx (list (db-get-key s))))
+      (let ((res (db-index-next m)))
         (if (not (= res 0)) idx
-          (let* ((klen (lmdb-key-len m))
+          (let* ((klen (db-key-len m))
                  (k (make-blob klen)))
-            (lmdb-key m k) 
+            (db-key m k) 
             (loop (cons (decode k) idx))
             ))
         ))
     ))
 
-(define (lmdb-get-value s)
-  (lmdb-log 2 "lmdb-value ~A~%" s)
+(define (db-get-value s)
+  (logger 2 "db-value ~A~%" s)
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
-    (let* ((vlen (lmdb-value-len m))
+    (let* ((vlen (db-value-len m))
            (v (make-blob vlen)))
-      (lmdb-value m v) 
+      (db-value m v) 
       (decode v)
       ))
   )
 
 
-(define (lmdb-values s)
-  (lmdb-log 2 "lmdb-values ~A~%" s)
+(define (db-values s)
+  (logger 2 "db-values ~A~%" s)
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
-    (lmdb-index-first m)
-    (let loop ((idx (list (lmdb-get-value s))))
-      (let ((res (lmdb-index-next m)))
+    (db-index-first m)
+    (let loop ((idx (list (db-get-value s))))
+      (let ((res (db-index-next m)))
         (if (not (= res 0)) idx
-          (let* ((vlen (lmdb-value-len m))
+          (let* ((vlen (db-value-len m))
                  (v (make-blob vlen)))
-            (lmdb-value m v) 
+            (db-value m v) 
             (loop (cons (decode v) idx))
             ))
         ))
     ))
 
 
-(define (lmdb-fold f init s)
-  (lmdb-log 2 "lmdb-fold ~A~%" s)
+(define (db-fold f init s)
+  (logger 2 "db-fold ~A~%" s)
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
-    (lmdb-index-first m)
-    (let loop ((ax (let ((k0 (lmdb-get-key s))
-                         (v0 (lmdb-get-value s)))
+    (db-index-first m)
+    (let loop ((ax (let ((k0 (db-get-key s))
+                         (v0 (db-get-value s)))
                      (f k0 v0 init))))
-      (let ((res (lmdb-index-next m)))
+      (let ((res (db-index-next m)))
         (if (not (= res 0)) ax
-          (let* ((klen (lmdb-key-len m))
+          (let* ((klen (db-key-len m))
                  (k (make-blob klen))
-                 (vlen (lmdb-value-len m))
+                 (vlen (db-value-len m))
                  (v (make-blob vlen)))
-            (lmdb-key m k) 
-            (lmdb-value m v) 
+            (db-key m k) 
+            (db-value m v) 
             (loop (f (decode k) (decode v) ax))
             ))
         ))
     ))
 
 
-(define (lmdb-for-each f s)
-  (lmdb-log 2 "lmdb-for-each ~A~%" s)
+(define (db-for-each f s)
+  (logger 2 "db-for-each ~A~%" s)
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
-    (lmdb-index-first m)
-    (let ((k0 (lmdb-get-key s))
-          (v0 (lmdb-get-value s)))
+    (db-index-first m)
+    (let ((k0 (db-get-key s))
+          (v0 (db-get-value s)))
       (f k0 v0))
     (let loop ()
-      (let ((res (lmdb-index-next m)))
+      (let ((res (db-index-next m)))
         (if (not (= res 0)) (begin)
-          (let* ((klen (lmdb-key-len m))
+          (let* ((klen (db-key-len m))
                  (k (make-blob klen))
-                 (vlen (lmdb-value-len m))
+                 (vlen (db-value-len m))
                  (v (make-blob vlen)))
-            (lmdb-key m k) 
-            (lmdb-value m v) 
+            (db-key m k) 
+            (db-value m v) 
             (f (decode k) (decode v))
             (loop)
             ))
@@ -658,46 +661,46 @@ END
     ))
 
 
-(define (hash-table->lmdb t mfile . key)
-  (lmdb-log 2 "table->lmdb ~A ~A ~A~%" t mfile key)
-  (lmdb-delete-database mfile)
-  (let ((s (apply lmdb-open (append (list mfile) key))))
-    (hash-table-for-each t (lambda (k v) (lmdb-set! s (string->blob (symbol->string k)) v)))
-    (lmdb-close s) #t))
+(define (hash-table->db t mfile . key)
+  (logger 2 "hash-table->db ~A ~A ~A~%" t mfile key)
+  (db-delete-database mfile)
+  (let ((s (apply db-open (append (list mfile) key))))
+    (hash-table-for-each t (lambda (k v) (db-set! s (string->blob (symbol->string k)) v)))
+    (db-close s) #t))
 
 
-(define (lmdb->hash-table mfile . key)
-  (lmdb-log 2 "lmdb->table ~A ~A~%" mfile key)
+(define (db->hash-table mfile . key)
+  (logger 2 "db->hash-table ~A ~A~%" mfile key)
   (if (not (file-exists? mfile)) #f
-    (let* ((s (apply lmdb-open (append (list mfile) key)))
+    (let* ((s (apply db-open (append (list mfile) key)))
            (m (lmdb-session-handler s))
            (decode (lmdb-session-decoder s))
            (t (make-hash-table)))
       (if m 
           (begin
-            (lmdb-begin s)
-            (lmdb-index-first m) 
-            (let* ((klen (lmdb-key-len m))
+            (db-begin s)
+            (db-index-first m) 
+            (let* ((klen (db-key-len m))
                    (k (make-blob klen))
-                   (vlen (lmdb-value-len m))
+                   (vlen (db-value-len m))
                    (v (make-blob vlen)))
-              (lmdb-key m k)
-              (lmdb-value m v)
+              (db-key m k)
+              (db-value m v)
               (hash-table-set! t k v))
             (let ((fnl (let loop ()
-                         (let* ((res (lmdb-index-next m))
-                                (klen (if (= res 0) (lmdb-key-len m) #f))
-                                (vlen (if (= res 0) (lmdb-value-len m) #f))
+                         (let* ((res (db-index-next m))
+                                (klen (if (= res 0) (db-key-len m) #f))
+                                (vlen (if (= res 0) (db-value-len m) #f))
                                 (u8val (if vlen (make-blob vlen) #f))
                                 (u8key (if klen (make-blob klen) #f))
-                                (k (if u8key (begin (lmdb-key m u8key) (decode u8key)) #f))
-                                (v (if u8val (begin (lmdb-value m u8val) (decode u8val)) #f)))
+                                (k (if u8key (begin (db-key m u8key) (decode u8key)) #f))
+                                (v (if u8val (begin (db-value m u8val) (decode u8val)) #f)))
                            (if (or (not (= res 0)) (equal? k 'LMDB_FAILURE) (equal? v 'LMDB_FAILURE))
                                t (begin
                                    (hash-table-set! t k v)
                                    (loop)))))))
-              (lmdb-end s)
-              (lmdb-close s)
+              (db-end s)
+              (db-close s)
               fnl
               ))
           #f))))

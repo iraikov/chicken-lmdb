@@ -1,0 +1,13 @@
+;; -*- Scheme -*-
+
+(
+ (synopsis "Hashtable-like interface to the LMDB key-value database.")
+ (license "BSD")
+ (category db)
+ (dependencies rabbit srfi-69)
+ (test-dependencies test srfi-69)
+ (maintainer "Ivan Raikov")
+ (author "Lambda Native")
+ (components (extension lmdb-ht (source "lmdb.scm")
+                        (custom-build "build.sh")))
+ )
