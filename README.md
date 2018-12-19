@@ -7,61 +7,61 @@ management library.
 
 ## Library procedures
 
-`(lmdb-open filename [key: enckey] [mapsize: size])`
+`(db-open filename [key: enckey] [mapsize: size])`
 Opens or creates LMDB database with optional encryption key and map size.
 
-`(lmdb-close db)`
+`(db-close db)`
 Closes LMDB database handle.
 
-`(lmdb-begin db [dbname: dbname])`
+`(db-begin db [dbname: dbname])`
 Begins LMDB transaction with optional database name.
 
-`(lmdb-end db)`
+`(db-end db)`
 Commits and ends LMDB transaction.
 
-`(lmdb-abort db)`
+`(db-abort db)`
 Aborts LMDB transaction.
 
-`(lmdb-delete-database dbname)`
+`(db-delete-database dbname)`
 Deletes LMDB database.
 
-`(lmdb-ref db key)`
+`(db-ref db key)`
 Looks up key in database.
 
-`(lmdb-set! db key value)`
+`(db-set! db key value)`
 Sets a key-value pair in the database.
 
-`(lmdb-count db)`
+`(db-count db)`
 Returns number of key-value pairs in database.
 
-`(lmdb-keys db)`
+`(db-keys db)`
 Returns a list of database keys.
 
-`(lmdb-values db)`
+`(db-values db)`
 Returns a list of database values.
 
-`(lmdb-key-len m)`
+`(db-key-len m)`
 Returns the length of the current key.
 
-`(lmdb-value-len m)`
+`(db-value-len m)`
 Returns the length of the current value.
 
-`(lmdb-key m buf)`
+`(db-key m buf)`
 Copies the current key to the specified blob.
 
-`(lmdb-value m buf)`
+`(db-value m buf)`
 Copies the current value to the specified blob.
 
-`(lmdb-fold f init db)`
+`(db-fold f init db)`
 Fold over the keys and values in the database.
 
-`(lmdb-for-each f db)`
+`(db-for-each f db)`
 Iterate over the keys and values in the database.
 
-`(hash-table->lmdb t dbfile [enckey])`
+`(hash-table->db t dbfile [enckey])`
 Saves SRFI-69 hash table to database.
 
-`(lmdb->hash-table dbfile [enckey])`
+`(db->hash-table dbfile [enckey])`
 Load database into SRFI-69 hash table.
 
 ## Example
@@ -74,23 +74,23 @@ Load database into SRFI-69 hash table.
        (keys (list "k1" 'k2 '(k3)))
        (values (list 'one 2 "three"))
        (cryptokey (string->blob "1234"))
-       (mm (lmdb-open fname key: cryptokey)))
-  (lmdb-begin mm)
+       (mm (db-open fname key: cryptokey)))
+  (db-begin mm)
   (let loop ((ks keys) (vs values))
     (if (> (length ks) 0) 
         (begin
-          (lmdb-set! mm (string->blob (->string (car ks))) (string->blob (->string (car vs))))
+          (db-set! mm (string->blob (->string (car ks))) (string->blob (->string (car vs))))
           (loop (cdr ks) (cdr vs)))))
-  (lmdb-end mm)
-  (lmdb-begin mm)
+  (db-end mm)
+  (db-begin mm)
   (let ((res (let loop ((ks keys) (vs values))
                (if (= (length ks) 0) #t
-                   (let ((v (lmdb-ref mm (string->blob (->string (car ks))))))
+                   (let ((v (db-ref mm (string->blob (->string (car ks))))))
                      (if (not (equal? (string->blob (->string (car vs))) v))  #f
                          (loop (cdr ks) (cdr vs)))))))
         )
-    (lmdb-end mm)
-    (lmdb-close mm)
+    (db-end mm)
+    (db-close mm)
     res)
   )
 ```
