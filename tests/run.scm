@@ -178,7 +178,9 @@
                 (test "condition-case for get missing key"
                       'missing
                       (condition-case (db-ref mm (string->blob "asdfasdf"))
-                        ((exn lmdb mdb-notfound) 'missing)))
+                                      ((exn lmdb mdb-notfound) 'missing)
+                                      (var () (print "mdb-notfound error: " var))
+                                      ))
                 (db-end mm)
                 (db-close mm))))
 

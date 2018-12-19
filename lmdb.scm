@@ -124,11 +124,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	(define (error-code-symbol code)
 	  (hash-table-ref/default code-symbol-map code 'unknown))
 	
-	(define-external (chicken_lmdb_condition (int code)) scheme-object
-	  (make-composite-condition
-	   (make-property-condition 'exn 'message (error-code-string code))
-	   (make-property-condition 'lmdb)
-	   (make-property-condition (error-code-symbol code))))
+	(define-external (chicken_lmdb_exception (int code) (c-string loc)) scheme-object
+          (abort
+           (make-composite-condition
+            (make-property-condition 'exn 'message (error-code-string code))
+            (make-property-condition 'lmdb)
+            (make-property-condition (error-code-symbol code)))))
 	
 #>
 
@@ -141,43 +142,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define C_bytevector_length(x)      (C_header_size(x))
 
-static void chicken_Panic (C_char *) C_noret;
-static void chicken_Panic (C_char *msg)
-{
-  C_word *a = C_alloc (C_SIZEOF_STRING (strlen (msg)));
-  C_word scmmsg = C_string2 (&a, msg);
-  C_halt (scmmsg);
-  exit (5); /* should never get here */
-}
-
-static void chicken_ThrowException(C_word value) C_noret;
-static void chicken_ThrowException(C_word value)
-{
-  char *aborthook = C_text("\003sysabort");
-
-  C_word *a = C_alloc(C_SIZEOF_STRING(strlen(aborthook)));
-  C_word abort = C_intern2(&a, aborthook);
-
-  abort = C_block_item(abort, 0);
-  if (C_immediatep(abort))
-    chicken_Panic(C_text("`##sys#abort' is not defined"));
-
-#if defined(C_BINARY_VERSION) && (C_BINARY_VERSION >= 8)
-  C_word rval[3] = { abort, C_SCHEME_UNDEFINED, value };
-  C_do_apply(3, rval);
-#else
-  C_save(value);
-  C_do_apply(1, abort, C_SCHEME_UNDEFINED);
-#endif
-}
-
 // see define-external
-C_word chicken_lmdb_condition(int code);
-
-void chicken_lmdb_exception (int code) 
-{
-  chicken_ThrowException(chicken_lmdb_condition(code));
-}
+C_word chicken_lmdb_exception(int code, char *loc);
 
 struct _mdb {
   MDB_env *env;
@@ -194,25 +160,25 @@ struct _mdb *_mdb_init(char *fname, int maxdbs, size_t mapsize)
   struct _mdb *m = (struct _mdb *)malloc(sizeof(struct _mdb));
   if ((rc = mdb_env_create(&m->env)) != 0) 
   {
-     chicken_lmdb_exception (rc);
+     chicken_lmdb_exception (rc, "_mdb_init");
   }
   if (maxdbs > 0) 
   {
      if ((rc = mdb_env_set_maxdbs(m->env, maxdbs)) != 0)
      {
-        chicken_lmdb_exception (rc);
+        chicken_lmdb_exception (rc, "_mdb_init");
      }
   }
   if (mapsize > 0) 
   {
      if ((rc = mdb_env_set_mapsize(m->env, mapsize)) != 0)
      {
-        chicken_lmdb_exception (rc);
+        chicken_lmdb_exception (rc, "_mdb_init");
      }
   }
   if ((rc = mdb_env_open(m->env, fname, 0, 0664)) != 0)
   {
-     chicken_lmdb_exception (rc);
+     chicken_lmdb_exception (rc, "_mdb_init");
   }
   m->cursor=NULL;
   m->dbname=NULL;
@@ -225,11 +191,11 @@ int _mdb_begin(struct _mdb *m, char *dbname)
   int rc, n;
   if ((rc = mdb_txn_begin(m->env, NULL, 0, &(m->txn))) != 0)
   {
-     chicken_lmdb_exception (rc);
+     chicken_lmdb_exception (rc, "_mdb_begin");
   }
   if ((rc = mdb_open(m->txn, dbname, MDB_CREATE, &m->dbi)) != 0)
   {
-     chicken_lmdb_exception (rc);
+     chicken_lmdb_exception (rc, "_mdb_begin");
   }
   m->cursor=NULL;
   if (dbname != NULL)
@@ -248,7 +214,7 @@ void _mdb_end(struct _mdb *m)
   int rc;
   if ((rc = mdb_txn_commit(m->txn)) != 0) 
   {
-     chicken_lmdb_exception (rc);
+     chicken_lmdb_exception (rc, "_mdb_end");
   }
   mdb_close(m->env, m->dbi);
 }
@@ -277,13 +243,13 @@ int _mdb_write(struct _mdb *m, unsigned char *k, int klen, unsigned char *v, int
         assert ((rc = _mdb_begin(m, m->dbname)) == 0);
         if ((rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0)) != 0)
         {
-           chicken_lmdb_exception (rc);
+           chicken_lmdb_exception (rc, "_mdb_write");
         };
         break;
       default:
         mdb_txn_commit(m->txn);
         mdb_close(m->env, m->dbi);
-        chicken_lmdb_exception (rc);
+        chicken_lmdb_exception (rc, "_mdb_write");
      }
   }
   return rc;
@@ -296,7 +262,7 @@ int _mdb_read(struct _mdb *m, unsigned char *k, int klen)
   m->key.mv_data = k;
   if ((rc = mdb_get(m->txn,m->dbi,&m->key, &m->value)) != 0)
   {
-     chicken_lmdb_exception (rc);
+     chicken_lmdb_exception (rc, "_mdb_read");
   }
   return rc;
 }
@@ -307,11 +273,11 @@ int _mdb_index_first(struct _mdb *m)
   if (m->cursor) { mdb_cursor_close(m->cursor); }
   if ((rc = mdb_cursor_open(m->txn, m->dbi, &(m->cursor))) != 0)
   {
-     chicken_lmdb_exception (rc);
+     chicken_lmdb_exception (rc, "_mdb_index_first");
   } else 
     if ((rc = mdb_cursor_get(m->cursor, &(m->key), &(m->value), MDB_FIRST)) != 0)
     {
-     chicken_lmdb_exception (rc);
+     chicken_lmdb_exception (rc, "_mdb_index_first");
     }
   return rc;
 }
