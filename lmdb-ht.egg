@@ -6,7 +6,7 @@
  (category db)
  (dependencies rabbit srfi-69)
  (test-dependencies test srfi-69)
- (build-dependencies compile-file)
+ (build-dependencies srfi-13 compile-file)
  (maintainer "Ivan Raikov")
  (author "Lambda Native")
  (components (extension lmdb-ht (source "lmdb.scm")
