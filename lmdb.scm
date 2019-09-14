@@ -66,7 +66,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
          db-delete-database
          db-set!
          db-ref
-         db-rm
          db-count
          db-keys
          db-values
@@ -467,11 +466,6 @@ END
   )
 
 
-(define (db-delete fname)
-  (abort
-   (make-property-condition 'exn
-    'message "db-delete is deprecated, use db-delete-database instead")))
-
 (define (db-delete-database fname)
   (logger 2 "db-delete-database ~A~%" fname)
   (if (file-exists? fname) (begin
@@ -528,8 +522,8 @@ END
     (and u8val (begin (db-value m u8val) (decode u8val)))
     ))
 
-(define (db-rm s key)
-  (logger 2 "db-rm ~A ~A~%" s key)
+(define (db-delete s key)
+  (logger 2 "db-delete ~A ~A~%" s key)
   (let* ((lmdb-ptr (lmdb-session-handler s))
          (lmdb-encode (lmdb-session-encoder s))
          (u8key (lmdb-encode key)))

@@ -22,6 +22,9 @@ Commits and ends LMDB transaction.
 `(db-abort db)`
 Aborts LMDB transaction.
 
+`(db-delete db key)`
+Removes a key from the database.
+
 `(db-delete-database dbname)`
 Deletes LMDB database.
 
@@ -30,9 +33,6 @@ Looks up key in database.
 
 `(db-set! db key value)`
 Sets a key-value pair in the database.
-
-`(db-rm db key)`
-Removes a key from the database.
 
 `(db-count db)`
 Returns number of key-value pairs in database.

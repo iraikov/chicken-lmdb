@@ -64,6 +64,36 @@
                  ))
              ))
 
+(test-group "lmdb unencrypted key-value deletion"
+            (test-assert
+             (let* ((fname (make-pathname "." "unittest.mdb")))
+               (db-delete-database fname)
+               (let* ((keys (list "k1" 'k2 '(k3)))
+                      (values (list 'one 2 "three"))
+                      (mm (db-open fname)))
+                 (db-begin mm)
+                 (let loop ((ks keys) (vs values))
+                   (if (> (length ks) 0) 
+                       (begin
+                         (db-set! mm (string->blob (->string (car ks))) (string->blob (->string (car vs))))
+                         (loop (cdr ks) (cdr vs)))))
+                 (db-end mm)
+                 (db-begin mm)
+                 (let loop ((ks keys))
+                   (if (> (length ks) 0) 
+                       (begin
+                         (db-delete mm (string->blob (->string (car ks))))
+                         (loop (cdr ks)))
+                       ))
+                 (db-end mm)
+                 (db-delete-database fname)
+                 (db-begin mm)
+                 (let ((res (= (db-count mm) 0)))
+                   (db-end mm))
+                 res)
+                 ))
+             )
+
 (test-group "lmdb unencrypted key-value creation and fold / for-each"
              (let* ((fname (make-pathname "." "unittest.mdb")))
                (db-delete-database fname)
