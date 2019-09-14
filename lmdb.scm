@@ -55,6 +55,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	 db-abort
          db-write
          db-read
+         db-del
          db-key-len
          db-value-len
          db-key
@@ -65,6 +66,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
          db-delete-database
          db-set!
          db-ref
+         db-rm
          db-count
          db-keys
          db-values
@@ -294,8 +296,10 @@ int _mdb_del(struct _mdb *m, unsigned char *k, int klen)
   int rc;
   m->key.mv_size = klen;
   m->key.mv_data = k;
-  rc = mdb_del(m->txn, m->dbi, &m->key, &m->value);
-  if (!rc) { rc = mdb_txn_commit(m->txn); }
+  if ((rc = mdb_del(m->txn, m->dbi, &m->key, &m->value)) != 0)
+  {
+      chicken_lmdb_exception (rc, "_mdb_del");
+  }
   return rc;
 }
 
@@ -411,6 +415,19 @@ END
 END
 ) m key))
 
+(define (db-del m key)
+  (logger 3 "db-del: ~A~%" key)
+  ((foreign-safe-lambda* int ((nonnull-c-pointer m) (scheme-object key))
+#<<END
+     int klen, result; void* keydata;
+     C_i_check_bytevector (key);
+     klen     = C_bytevector_length(key);
+     keydata  = C_c_bytevector (key);
+     result   = _mdb_del(m, keydata, klen);
+     C_return (result);
+END
+) m key))
+
 
 (define db-key-len (foreign-safe-lambda* 
                     unsigned-int ((nonnull-c-pointer m)) 
@@ -511,6 +528,12 @@ END
     (and u8val (begin (db-value m u8val) (decode u8val)))
     ))
 
+(define (db-rm s key)
+  (logger 2 "db-rm ~A ~A~%" s key)
+  (let* ((lmdb-ptr (lmdb-session-handler s))
+         (lmdb-encode (lmdb-session-encoder s))
+         (u8key (lmdb-encode key)))
+    (db-del lmdb-ptr u8key)))
 
 
 (define (db-close s) 
