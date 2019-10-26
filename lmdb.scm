@@ -81,7 +81,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
                 (only (chicken file) create-directory delete-directory
                       delete-file file-exists?)
                 (chicken condition) 
-                srfi-69  (prefix rabbit rabbit:))
+                srfi-69 srfi-4 (prefix rabbit rabbit:))
         
 	;(import scheme (chicken base) (chicken foreign) (chicken blob) 
                 ;
@@ -125,13 +125,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	(define (error-code-symbol code)
 	  (hash-table-ref/default code-symbol-map code 'unknown))
 	
-	(define-external (chicken_lmdb_exception (int code) (c-string loc)) scheme-object
-          (abort
-           (make-composite-condition
-            (make-property-condition 'exn 'message (error-code-string code))
-            (make-property-condition 'lmdb)
-            (make-property-condition (error-code-symbol code)))))
-	
 #>
 
 #include <stdio.h>
@@ -143,9 +136,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define C_bytevector_length(x)      (C_header_size(x))
 
-// see define-external
-C_word chicken_lmdb_exception(int code, char *loc);
-
 struct _mdb {
   MDB_env *env;
   MDB_dbi dbi;
@@ -155,31 +145,30 @@ struct _mdb {
   char *dbname;
 };
 
-struct _mdb *_mdb_init(char *fname, int maxdbs, size_t mapsize)
+struct _mdb *_mdb_init(char *fname, int maxdbs, size_t mapsize, int *rc)
 {
-  int rc;
   struct _mdb *m = (struct _mdb *)malloc(sizeof(struct _mdb));
-  if ((rc = mdb_env_create(&m->env)) != 0) 
+  if ((*rc = mdb_env_create(&m->env)) != 0) 
   {
-     chicken_lmdb_exception (rc, "_mdb_init");
+     return NULL;
   }
   if (maxdbs > 0) 
   {
-     if ((rc = mdb_env_set_maxdbs(m->env, maxdbs)) != 0)
+     if ((*rc = mdb_env_set_maxdbs(m->env, maxdbs)) != 0)
      {
-        chicken_lmdb_exception (rc, "_mdb_init");
+        return NULL;
      }
   }
   if (mapsize > 0) 
   {
-     if ((rc = mdb_env_set_mapsize(m->env, mapsize)) != 0)
+     if ((*rc = mdb_env_set_mapsize(m->env, mapsize)) != 0)
      {
-        chicken_lmdb_exception (rc, "_mdb_init");
+        return NULL;
      }
   }
-  if ((rc = mdb_env_open(m->env, fname, 0, 0664)) != 0)
+  if ((*rc = mdb_env_open(m->env, fname, 0, 0664)) != 0)
   {
-     chicken_lmdb_exception (rc, "_mdb_init");
+     return NULL;
   }
   m->cursor=NULL;
   m->dbname=NULL;
@@ -192,11 +181,11 @@ int _mdb_begin(struct _mdb *m, char *dbname)
   int rc, n;
   if ((rc = mdb_txn_begin(m->env, NULL, 0, &(m->txn))) != 0)
   {
-     chicken_lmdb_exception (rc, "_mdb_begin");
+     return rc;
   }
   if ((rc = mdb_open(m->txn, dbname, MDB_CREATE, &m->dbi)) != 0)
   {
-     chicken_lmdb_exception (rc, "_mdb_begin");
+     return rc;
   }
   m->cursor=NULL;
   if (dbname != NULL)
@@ -210,14 +199,15 @@ int _mdb_begin(struct _mdb *m, char *dbname)
 }
 
 
-void _mdb_end(struct _mdb *m)
+int _mdb_end(struct _mdb *m)
 {
   int rc;
   if ((rc = mdb_txn_commit(m->txn)) != 0) 
   {
-     chicken_lmdb_exception (rc, "_mdb_end");
+     return rc;
   }
   mdb_close(m->env, m->dbi);
+  return rc;
 }
 
 void _mdb_abort(struct _mdb *m)
@@ -244,13 +234,12 @@ int _mdb_write(struct _mdb *m, unsigned char *k, int klen, unsigned char *v, int
         assert ((rc = _mdb_begin(m, m->dbname)) == 0);
         if ((rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0)) != 0)
         {
-           chicken_lmdb_exception (rc, "_mdb_write");
+          return rc;
         };
         break;
       default:
         mdb_txn_commit(m->txn);
         mdb_close(m->env, m->dbi);
-        chicken_lmdb_exception (rc, "_mdb_write");
      }
   }
   return rc;
@@ -263,7 +252,7 @@ int _mdb_read(struct _mdb *m, unsigned char *k, int klen)
   m->key.mv_data = k;
   if ((rc = mdb_get(m->txn,m->dbi,&m->key, &m->value)) != 0)
   {
-     chicken_lmdb_exception (rc, "_mdb_read");
+     return rc;
   }
   return rc;
 }
@@ -274,11 +263,11 @@ int _mdb_index_first(struct _mdb *m)
   if (m->cursor) { mdb_cursor_close(m->cursor); }
   if ((rc = mdb_cursor_open(m->txn, m->dbi, &(m->cursor))) != 0)
   {
-     chicken_lmdb_exception (rc, "_mdb_index_first");
+     return rc;
   } else 
     if ((rc = mdb_cursor_get(m->cursor, &(m->key), &(m->value), MDB_FIRST)) != 0)
     {
-     chicken_lmdb_exception (rc, "_mdb_index_first");
+     return rc;
     }
   return rc;
 }
@@ -297,7 +286,7 @@ int _mdb_del(struct _mdb *m, unsigned char *k, int klen)
   m->key.mv_data = k;
   if ((rc = mdb_del(m->txn, m->dbi, &m->key, &m->value)) != 0)
   {
-      chicken_lmdb_exception (rc, "_mdb_del");
+     return rc;
   }
   return rc;
 }
@@ -356,20 +345,33 @@ int _mdb_stats(struct _mdb *m)
 
 ;; ffi
 
+(define (lmdb-check-error loc rc)
+  (if (not (= rc 0))
+      (abort
+       (make-composite-condition
+        (make-property-condition 'exn 'message (error-code-string rc))
+        (make-property-condition 'lmdb)
+        (make-property-condition (error-code-symbol rc))))
+      rc))
 
 (define db-init0 (foreign-safe-lambda* 
-                    nonnull-c-pointer ((nonnull-c-string fname) (int maxdbs) (size_t mapsize))
-                    "C_return (_mdb_init (fname,maxdbs,mapsize));"))
+                    c-pointer ((nonnull-c-string fname) (int maxdbs) (size_t mapsize) (s32vector rc))
+                    "C_return (_mdb_init (fname,maxdbs,mapsize,rc));"))
 (define (db-init fname #!key (maxdbs 0) (mapsize 0))
-  (db-init0 fname maxdbs mapsize))
+  (let ((rc (make-s32vector 1)))
+    (let ((res (db-init0 fname maxdbs mapsize rc)))
+      (lmdb-check-error 'db-init (s32vector-ref rc 0))
+      res)
+      ))
+        
 
 (define c-lmdb-begin (foreign-safe-lambda* 
                       int ((nonnull-c-pointer m) (c-string dbname))
                       "C_return(_mdb_begin (m, dbname));"))
 
 (define c-lmdb-end (foreign-safe-lambda* 
-                    void ((nonnull-c-pointer m))
-                    "_mdb_end (m);"))
+                    int ((nonnull-c-pointer m))
+                    "C_return(_mdb_end (m));"))
 
 (define c-lmdb-abort (foreign-safe-lambda* 
 			 void ((nonnull-c-pointer m))
@@ -386,7 +388,8 @@ int _mdb_stats(struct _mdb *m)
 
 (define (db-write m key val) 
   (logger 3 "db-write: ~A ~A = ~A~%" m key val)
-  ((foreign-safe-lambda* int ((nonnull-c-pointer m) (scheme-object key) (scheme-object val))
+  (lmdb-check-error 'db-write
+   ((foreign-safe-lambda* int ((nonnull-c-pointer m) (scheme-object key) (scheme-object val))
 #<<END
      int klen, vlen, result; void* keydata, *valdata;
      C_i_check_bytevector (key);
@@ -398,11 +401,12 @@ int _mdb_stats(struct _mdb *m)
      result   = _mdb_write(m, keydata, klen, valdata, vlen);
      C_return (result);
 END
-) m key val))
+) m key val)))
 
 
 (define (db-read m key) 
   (logger 3 "db-read: ~A~%" key)
+  (lmdb-check-error 'db-read
   ((foreign-safe-lambda* int ((nonnull-c-pointer m) (scheme-object key))
 #<<END
      int klen, result; void* keydata;
@@ -412,11 +416,12 @@ END
      result   = _mdb_read(m, keydata, klen);
      C_return (result);
 END
-) m key))
+) m key)))
 
 (define (db-del m key)
   (logger 3 "db-del: ~A~%" key)
-  ((foreign-safe-lambda* int ((nonnull-c-pointer m) (scheme-object key))
+  (lmdb-check-error 'db-del
+   ((foreign-safe-lambda* int ((nonnull-c-pointer m) (scheme-object key))
 #<<END
      int klen, result; void* keydata;
      C_i_check_bytevector (key);
@@ -425,7 +430,7 @@ END
      result   = _mdb_del(m, keydata, klen);
      C_return (result);
 END
-) m key))
+) m key)))
 
 
 (define db-key-len (foreign-safe-lambda* 
@@ -447,10 +452,10 @@ END
                       "C_return (_mdb_count (m));"))
 
 (define db-index-first (foreign-safe-lambda* 
-                          unsigned-int ((nonnull-c-pointer m)) 
+                          int ((nonnull-c-pointer m)) 
                           "C_return (_mdb_index_first (m));"))
 (define db-index-next (foreign-safe-lambda* 
-                         unsigned-int ((nonnull-c-pointer m)) 
+                         int ((nonnull-c-pointer m)) 
                          "C_return (_mdb_index_next (m));"))
 
 
@@ -491,11 +496,12 @@ END
 
 (define (db-begin s #!key (dbname #f))
   (logger 2 "db-begin ~A ~A~%" s dbname)
-  (c-lmdb-begin (lmdb-session-handler s) dbname))
+  (print "session handler: " (lmdb-session-handler s))
+  (lmdb-check-error 'db-begin (c-lmdb-begin (lmdb-session-handler s) dbname)))
 
 (define (db-end s)
   (logger 2 "db-end ~A~%" s)
-  (c-lmdb-end (lmdb-session-handler s)))
+  (lmdb-check-error 'db-end (c-lmdb-end (lmdb-session-handler s))))
 
 (define (db-abort s)
   (logger 2 "db-abort ~A~%" s)
@@ -557,7 +563,7 @@ END
   (logger 2 "db-keys ~A~%" s)
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
-    (db-index-first m)
+    (lmdb-check-error 'db-keys (db-index-first m))
     (let loop ((idx (list (db-get-key s))))
       (let ((res (db-index-next m)))
         (if (not (= res 0)) idx
@@ -585,7 +591,7 @@ END
   (logger 2 "db-values ~A~%" s)
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
-    (db-index-first m)
+    (lmdb-check-error 'db-value (db-index-first m))
     (let loop ((idx (list (db-get-value s))))
       (let ((res (db-index-next m)))
         (if (not (= res 0)) idx
@@ -602,7 +608,7 @@ END
   (logger 2 "db-fold ~A~%" s)
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
-    (db-index-first m)
+    (lmdb-check-error 'db-fold (db-index-first m))
     (let loop ((ax (let ((k0 (db-get-key s))
                          (v0 (db-get-value s)))
                      (f k0 v0 init))))
@@ -624,7 +630,7 @@ END
   (logger 2 "db-for-each ~A~%" s)
   (let* ((m (lmdb-session-handler s))
          (decode (lmdb-session-decoder s)))
-    (db-index-first m)
+    (lmdb-check-error 'db-for-each (db-index-first m))
     (let ((k0 (db-get-key s))
           (v0 (db-get-value s)))
       (f k0 v0))
@@ -662,7 +668,7 @@ END
       (if m 
           (begin
             (db-begin s)
-            (db-index-first m) 
+            (lmdb-check-error 'db->hash-table (db-index-first m) )
             (let* ((klen (db-key-len m))
                    (k (make-blob klen))
                    (vlen (db-value-len m))

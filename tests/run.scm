@@ -6,8 +6,8 @@
 (debuglevel 3)
 
 
-;(test-group "lmdb encrypted key-value creation and lookup"
-;            (test-assert
+(test-group "lmdb encrypted key-value creation and lookup"
+            (test-assert
              (let* ((fname (make-pathname "." "unittest.mdb")))
                ;(db-delete-database fname)
                (let* ((keys (list "k1" 'k2 '(k3)))
@@ -33,7 +33,7 @@
                    (db-delete-database fname)
                    res)
                  ))
-             
+             ))
 
 
 (test-group "lmdb unencrypted key-value creation and lookup"
@@ -89,8 +89,8 @@
                  (db-delete-database fname)
                  (db-begin mm)
                  (let ((res (= (db-count mm) 0)))
-                   (db-end mm))
-                 res)
+                   (db-end mm)
+                   res))
                  ))
              )
 
