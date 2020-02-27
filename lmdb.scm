@@ -73,6 +73,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
          db-for-each
          hash-table->db
          db->hash-table
+
+         db-flags
          )
 
 	(import scheme (chicken base) (chicken foreign) (chicken blob)
@@ -80,17 +82,24 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
                 (only (chicken pathname) make-pathname)
                 (only (chicken file) create-directory delete-directory
                       delete-file file-exists?)
+                (only (chicken fixnum) fxior)
                 (chicken condition) 
                 srfi-69 srfi-4 (prefix rabbit rabbit:))
         
-	;(import scheme (chicken base) (chicken foreign) (chicken blob) 
-                ;
-                ;(only (chicken files) make-pathname  create-directory delete-directory)
-         ;       
 
         (define debuglevel (make-parameter 0))
         (define (logger level . x)
           (if (>= (debuglevel) level) (apply printf x)))
+
+        (define-syntax define-foreign-enum
+          (syntax-rules ()
+            [(define-foreign-enum (id base-type)
+               (key value) ...)
+             (define (id v #!optional [seed 0])
+               (case v
+                 [(key) (fxior (foreign-value value base-type) seed)] ...
+                 [else #f]))]))
+
 
 
 	(define error-code-string
@@ -124,7 +133,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	
 	(define (error-code-symbol code)
 	  (hash-table-ref/default code-symbol-map code 'unknown))
-	
+
+	        
+        (define-foreign-enum (db-flags unsigned-int)
+          [#:fixed-map "MDB_FIXEDMAP"]
+          [#:no-subdirectory "MDB_NOSUBDIR"]
+          [#:read-only "MDB_RDONLY"]
+          [#:write-map "MDB_WRITEMAP"]
+          [#:no-meta-sync "MDB_NOMETASYNC"]
+          [#:no-sync "MDB_NOSYNC"]
+          [#:map-async "MDB_MAPASYNC"]
+          [#:no-lock "MDB_NOLOCK"]
+          [#:no-read-ahead "MDB_NORDAHEAD"])
+
 #>
 
 #include <stdio.h>
@@ -176,14 +197,14 @@ struct _mdb *_mdb_init(char *fname, int maxdbs, size_t mapsize, int *rc)
 }
 
 
-int _mdb_begin(struct _mdb *m, char *dbname, int readonly)
+int _mdb_begin(struct _mdb *m, char *dbname, unsigned int flags)
 {
   int rc, n;
-  if ((rc = mdb_txn_begin(m->env, NULL, readonly ? MDB_RDONLY : 0, &(m->txn))) != 0)
+  if ((rc = mdb_txn_begin(m->env, NULL, flags, &(m->txn))) != 0)
   {
      return rc;
   }
-  if ((rc = mdb_open(m->txn, dbname, readonly ? 0 : MDB_CREATE, &m->dbi)) != 0)
+  if ((rc = mdb_open(m->txn, dbname, (flags & MDB_RDONLY) ? 0 : MDB_CREATE, &m->dbi)) != 0)
   {
      return rc;
   }
@@ -366,8 +387,8 @@ int _mdb_stats(struct _mdb *m)
         
 
 (define c-lmdb-begin (foreign-safe-lambda* 
-                      int ((nonnull-c-pointer m) (c-string dbname) (int readonly))
-                      "C_return(_mdb_begin (m, dbname, readonly));"))
+                      int ((nonnull-c-pointer m) (c-string dbname) (int flags))
+                      "C_return(_mdb_begin (m, dbname, flags));"))
 
 (define c-lmdb-end (foreign-safe-lambda* 
                     int ((nonnull-c-pointer m))
@@ -494,10 +515,10 @@ END
 (define (db-max-key-size s)
   (c-lmdb-max-key-size (lmdb-session-handler s)))
 
-(define (db-begin s #!key (dbname #f) (readonly #f))
-  (logger 2 "db-begin ~A ~A ~A~%" s dbname readonly)
+(define (db-begin s #!key (dbname #f) (flags 0))
+  (logger 2 "db-begin ~A ~A ~A~%" s dbname flags)
   (print "session handler: " (lmdb-session-handler s))
-  (lmdb-check-error 'db-begin (c-lmdb-begin (lmdb-session-handler s) dbname (if readonly 1 0))))
+  (lmdb-check-error 'db-begin (c-lmdb-begin (lmdb-session-handler s) dbname flags)))
 
 (define (db-end s)
   (logger 2 "db-end ~A~%" s)

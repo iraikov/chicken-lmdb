@@ -250,7 +250,7 @@
 		(db-set! mm (string->blob "foo") (string->blob "one"))
 		(db-end mm)
         ;; reopen as readonly
-		(db-begin mm readonly: #t)
+		(db-begin mm flags: (db-flags #:read-only))
 		;; foo is still set
 		(test (string->blob "one")
 		      (db-ref mm (string->blob "foo")))
