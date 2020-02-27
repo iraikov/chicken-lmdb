@@ -176,14 +176,14 @@ struct _mdb *_mdb_init(char *fname, int maxdbs, size_t mapsize, int *rc)
 }
 
 
-int _mdb_begin(struct _mdb *m, char *dbname)
+int _mdb_begin(struct _mdb *m, char *dbname, int readonly)
 {
   int rc, n;
-  if ((rc = mdb_txn_begin(m->env, NULL, 0, &(m->txn))) != 0)
+  if ((rc = mdb_txn_begin(m->env, NULL, readonly ? MDB_RDONLY : 0, &(m->txn))) != 0)
   {
      return rc;
   }
-  if ((rc = mdb_open(m->txn, dbname, MDB_CREATE, &m->dbi)) != 0)
+  if ((rc = mdb_open(m->txn, dbname, readonly ? 0 : MDB_CREATE, &m->dbi)) != 0)
   {
      return rc;
   }
@@ -231,7 +231,7 @@ int _mdb_write(struct _mdb *m, unsigned char *k, int klen, unsigned char *v, int
       case MDB_BAD_TXN:
         mdb_txn_abort(m->txn);
         mdb_close(m->env, m->dbi);
-        assert ((rc = _mdb_begin(m, m->dbname)) == 0);
+        assert ((rc = _mdb_begin(m, m->dbname, 0)) == 0);
         if ((rc = mdb_put(m->txn, m->dbi, &(m->key), &(m->value), 0)) != 0)
         {
           return rc;
@@ -366,8 +366,8 @@ int _mdb_stats(struct _mdb *m)
         
 
 (define c-lmdb-begin (foreign-safe-lambda* 
-                      int ((nonnull-c-pointer m) (c-string dbname))
-                      "C_return(_mdb_begin (m, dbname));"))
+                      int ((nonnull-c-pointer m) (c-string dbname) (int readonly))
+                      "C_return(_mdb_begin (m, dbname, readonly));"))
 
 (define c-lmdb-end (foreign-safe-lambda* 
                     int ((nonnull-c-pointer m))
@@ -494,10 +494,10 @@ END
 (define (db-max-key-size s)
   (c-lmdb-max-key-size (lmdb-session-handler s)))
 
-(define (db-begin s #!key (dbname #f))
-  (logger 2 "db-begin ~A ~A~%" s dbname)
+(define (db-begin s #!key (dbname #f) (readonly #f))
+  (logger 2 "db-begin ~A ~A ~A~%" s dbname readonly)
   (print "session handler: " (lmdb-session-handler s))
-  (lmdb-check-error 'db-begin (c-lmdb-begin (lmdb-session-handler s) dbname)))
+  (lmdb-check-error 'db-begin (c-lmdb-begin (lmdb-session-handler s) dbname (if readonly 1 0))))
 
 (define (db-end s)
   (logger 2 "db-end ~A~%" s)

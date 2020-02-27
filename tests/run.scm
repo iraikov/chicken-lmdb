@@ -241,4 +241,23 @@
                 (db-end mm)
                 (db-close mm))))
 
+(test-group "readonly test"
+	    (let* ((fname (make-pathname "." "unittest.mdb")))
+              (db-delete-database fname)
+              (let ((mm (db-open fname maxdbs: 2)))
+                (db-begin mm)
+		;; set foo
+		(db-set! mm (string->blob "foo") (string->blob "one"))
+		(db-end mm)
+        ;; reopen as readonly
+		(db-begin mm readonly: #t)
+		;; foo is still set
+		(test (string->blob "one")
+		      (db-ref mm (string->blob "foo")))
+		;; cannot set bar
+		(test 'unknown
+		      (condition-case (db-set! mm (string->blob "bar") (string->blob "two"))
+			((exn lmdb unknown) 'unknown)))
+                (db-close mm))))
+
 (test-exit)
