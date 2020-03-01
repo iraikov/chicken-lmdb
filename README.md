@@ -129,5 +129,5 @@ Load database into SRFI-69 hash table.
 		(test 'unknown
 		      (condition-case (db-set! mm (string->blob "bar") (string->blob "two"))
 			((exn lmdb unknown) 'unknown)))
-                (db-close mm))))
+                (db-close mm)))
 ```
