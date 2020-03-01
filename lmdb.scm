@@ -517,7 +517,6 @@ END
 
 (define (db-begin s #!key (dbname #f) (flags 0))
   (logger 2 "db-begin ~A ~A ~A~%" s dbname flags)
-  (print "session handler: " (lmdb-session-handler s))
   (lmdb-check-error 'db-begin (c-lmdb-begin (lmdb-session-handler s) dbname flags)))
 
 (define (db-end s)
