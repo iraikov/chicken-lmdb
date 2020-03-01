@@ -14,10 +14,10 @@ Opens or creates LMDB database with optional encryption key and map size.
 Closes LMDB database handle.
 
 `(db-begin db [dbname: dbname] [flags: 0])`
-Begins LMDB transaction with optional database name and flags returned by db-flags.`
+Begins LMDB transaction with optional database name and flags returned by `db-flags`.
 Commits and ends LMDB transaction.
 
-`(db-flags flag-name ..)`
+`(db-flags flag-name ...)`
 Returns a bit mask that represents LMDB environment flags. The flag name is one of the following keywords:
 - `#:fixed-map` : mmap at a fixed address
 - `#:no-subdirectory` : no environment directory
