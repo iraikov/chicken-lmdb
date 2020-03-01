@@ -13,11 +13,22 @@ Opens or creates LMDB database with optional encryption key and map size.
 `(db-close db)`
 Closes LMDB database handle.
 
-`(db-begin db [dbname: dbname])`
-Begins LMDB transaction with optional database name.
-
-`(db-end db)`
+`(db-begin db [dbname: dbname] [flags: 0])`
+Begins LMDB transaction with optional database name and flags returned by db-flags.`
 Commits and ends LMDB transaction.
+
+`(db-flags flag-name ..)`
+Returns a bit mask that represents LMDB environment flags. The flag name is one of the following keywords:
+- `#:fixed-map` : mmap at a fixed address
+- `#:no-subdirectory` : no environment directory
+- `#:read-only` : read only
+- `#:write-map` : use writable mmap
+- `#:no-meta-sync` :  don't fsync metapage after commit
+- `#:no-sync` : don't fsync after commit
+- `#:map-async` : use asynchronous sync with `#:write-map` is used
+- `#:no-lock` : don't do locking
+- `#:no-read-ahead` : don't do readahead
+
 
 `(db-abort db)`
 Aborts LMDB transaction.
